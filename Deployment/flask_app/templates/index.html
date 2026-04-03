@@ -1,0 +1,23 @@
+{% extends 'base.html' %} {% block title %}Головна | News AI Platform{% endblock
+%} {% block content %}
+<section class="hero">
+	<h1>Платформа Аналізу Новин</h1>
+	<p>
+		Веб-система для визначення правдивості новин (BERT) та класифікації тематики
+		(SVM). Підтримує реєстрацію користувачів, вхід та персональний кабінет для
+		аналізу текстів.
+	</p>
+	<div class="hero-actions">
+		{% if current_user.is_authenticated %}
+		<a class="btn btn-primary" href="{{ url_for('dashboard') }}"
+			>Перейти в кабінет</a
+		>
+		{% else %}
+		<a class="btn btn-primary" href="{{ url_for('register') }}"
+			>Створити акаунт</a
+		>
+		<a class="btn btn-secondary" href="{{ url_for('login') }}">Увійти</a>
+		{% endif %}
+	</div>
+</section>
+{% endblock %}

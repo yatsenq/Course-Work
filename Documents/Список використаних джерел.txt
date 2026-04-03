@@ -1,0 +1,66 @@
+[1]  Reuters Institute for the Study of Journalism. Digital News Report 2023.
+     University of Oxford, 2023. [Електронний ресурс] – Режим доступу:
+     https://reutersinstitute.politics.ox.ac.uk/sites/default/files/2023-06/Digital_News_Report_2023.pdf
+
+[2]  Google Fact Check Explorer. Google News Initiative. [Електронний ресурс] –
+     Режим доступу: https://toolbox.google.com/factcheck/explorer
+
+[3]  Fact Check Tools API. Google Developers. [Електронний ресурс] –
+     Режим доступу: https://developers.google.com/fact-check/tools/api
+
+[4]  StopFake. Про проєкт StopFake: верифікація фактів та боротьба з
+     дезінформацією. [Електронний ресурс] – Режим доступу:
+     https://www.stopfake.org/uk/pro-nas/
+
+[5]  VoxCheck. Проєкт перевірки фактів VoxUkraine. [Електронний ресурс] –
+     Режим доступу: https://voxukraine.org/uk/voxcheck/
+
+[6]  FakeCheck.in.ua. Калькулятор фейкових новин. [Електронний ресурс] –
+     Режим доступу: https://fakecheck.in.ua/
+
+[7]  Gwara Media. Перевірка разом: Telegram-бот для фактчекінгу.
+     [Електронний ресурс] – Режим доступу:
+     https://gwaramedia.com/perevirka-razom-smozhemo/
+
+[8]  PolitiFact. Fact-checking U.S. politics. [Електронний ресурс] –
+     Режим доступу: https://www.politifact.com/
+
+[9]  Fake News Research. Simon Fraser University. [Електронний ресурс] –
+     Режим доступу: http://fakenews.research.sfu.ca/
+
+[10] Shu K., Sliva A., Wang S., Tang J., Liu H. Fake News Detection on Social
+     Media: A Data Mining Perspective // ACM SIGKDD Explorations Newsletter. –
+     2017. – Vol. 19, No. 1. – P. 22–36.
+
+[11] Cortes C., Vapnik V. Support-Vector Networks // Machine Learning. –
+     1995. – Vol. 20, No. 3. – P. 273–297.
+
+[12] Vaswani A., Shazeer N., Parmar N. et al. Attention Is All You Need //
+     Advances in Neural Information Processing Systems (NeurIPS). – 2017. –
+     Vol. 30. – P. 5998–6008.
+
+[13] Devlin J., Chang M.-W., Lee K., Toutanova K. BERT: Pre-training of Deep
+     Bidirectional Transformers for Language Understanding // Proceedings of
+     NAACL-HLT 2019. – Minneapolis, 2019. – P. 4171–4186.
+
+[14] Pires T., Schlinger E., Garrette D. How Multilingual is Multilingual BERT? //
+     Proceedings of ACL 2019. – Florence, 2019. – P. 4996–5001.
+
+[15] Srivastava N., Hinton G., Krizhevsky A., Sutskever I., Salakhutdinov R.
+     Dropout: A Simple Way to Prevent Neural Networks from Overfitting //
+     Journal of Machine Learning Research. – 2014. – Vol. 15, No. 1. –
+     P. 1929–1958.
+
+[16] Ioffe S., Szegedy C. Batch Normalization: Accelerating Deep Network
+     Training by Reducing Internal Covariate Shift // Proceedings of ICML 2015. –
+     Lille, 2015. – P. 448–456.
+
+[17] Ba J. L., Kiros J. R., Hinton G. E. Layer Normalization //
+     arXiv preprint arXiv:1607.06450. – 2016. – 14 p.
+
+[18] Zhou X., Zafarani R. A Survey of Fake News: Fundamental Theories,
+     Detection Methods, and Opportunities // ACM Computing Surveys. –
+     2020. – Vol. 53, No. 5. – Article 109.
+
+[19] Loshchilov I., Hutter F. Decoupled Weight Decay Regularization //
+     Proceedings of ICLR 2019. – New Orleans, 2019.

@@ -1,0 +1,15 @@
+{% extends 'base.html' %} {% block title %}Вхід{% endblock %} {% block content
+%}
+<section class="card auth-card">
+	<h2>Вхід</h2>
+	<form method="post">
+		<label>Email</label>
+		<input type="email" name="email" required />
+
+		<label>Пароль</label>
+		<input type="password" name="password" required />
+
+		<button type="submit" class="btn btn-primary">Увійти</button>
+	</form>
+</section>
+{% endblock %}

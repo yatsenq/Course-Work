@@ -1,0 +1,16 @@
+.venv/
+Datasets/
+gitignore# Datasets
+Datasets/
+
+*.pth
+*.pt
+
+__pycache__/
+*.pyc
+*.pyo
+
+.ipynb_checkpoints/
+
+*.log
+*.tmp

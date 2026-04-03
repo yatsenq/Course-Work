@@ -1,0 +1,35 @@
+{% extends 'base.html' %} {% block title %}Кабінет{% endblock %} {% block
+content %}
+<section class="card">
+	<h2>Аналіз новини</h2>
+	<form method="post">
+		<label>Введіть текст новини</label>
+		<textarea name="news_text" rows="8" required>{{ text }}</textarea>
+		<button type="submit" class="btn btn-primary">Запустити аналіз</button>
+	</form>
+</section>
+
+{% if result %}
+<section class="grid-2">
+	<article class="card result-card">
+		<h3>Правдивість</h3>
+		<p class="status {{ 'ok' if result.fake_label == 'TRUE' else 'bad' }}">
+			{{ result.fake_label }}
+		</p>
+		<p>Впевненість: {{ '%.2f'|format(result.fake_confidence * 100) }}%</p>
+		<p>TRUE: {{ '%.2f'|format(result.prob_true * 100) }}%</p>
+		<p>FAKE: {{ '%.2f'|format(result.prob_fake * 100) }}%</p>
+	</article>
+
+	<article class="card result-card">
+		<h3>Тема</h3>
+		<p class="theme-name">{{ result.theme }}</p>
+		<p>Впевненість: {{ '%.2f'|format(result.theme_confidence * 100) }}%</p>
+		<ul>
+			{% for item in result.theme_distribution %}
+			<li>{{ item.theme }}: {{ '%.2f'|format(item.probability * 100) }}%</li>
+			{% endfor %}
+		</ul>
+	</article>
+</section>
+{% endif %} {% endblock %}
