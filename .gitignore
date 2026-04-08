@@ -5,6 +5,7 @@ Datasets/
 
 *.pth
 *.pt
+*.pkl
 
 __pycache__/
 *.pyc
@@ -14,3 +15,9 @@ __pycache__/
 
 *.log
 *.tmp
+
+.env
+.env.*
+!.env.example
+
+Deployment/flask_app/instance/site.db

@@ -3,7 +3,14 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#f4f7fb" />
 		<title>{% block title %}News AI Platform{% endblock %}</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+			rel="stylesheet"
+		/>
 		<link
 			rel="stylesheet"
 			href="{{ url_for('static', filename='css/style.css') }}"
@@ -12,12 +19,19 @@
 	<body>
 		<header class="site-header">
 			<div class="container nav-wrap">
-				<a href="{{ url_for('index') }}" class="brand">News AI Platform</a>
-				<nav>
+				<a href="{{ url_for('index') }}" class="brand">
+					<span class="brand-mark">N</span>
+					<span class="brand-text">News AI</span>
+				</a>
+				<nav class="site-nav">
+					<a href="{{ url_for('index') }}">Головна</a>
+					<a href="{{ url_for('dashboard') }}">Аналіз</a>
 					{% if current_user.is_authenticated %}
-					<a href="{{ url_for('dashboard') }}">Кабінет</a>
-					<a href="{{ url_for('logout') }}">Вийти</a>
+					<a href="{{ url_for('dashboard') }}#history">Історія</a>
+					<span class="nav-user">{{ current_user.username }}</span>
+					<a class="nav-action" href="{{ url_for('logout') }}">Вийти</a>
 					{% else %}
+					<a class="nav-action" href="{{ url_for('guest') }}">Гість</a>
 					<a href="{{ url_for('login') }}">Вхід</a>
 					<a href="{{ url_for('register') }}">Реєстрація</a>
 					{% endif %}
@@ -27,14 +41,19 @@
 
 		<main class="container page-content">
 			{% with messages = get_flashed_messages(with_categories=true) %} {% if
-			messages %} {% for category, message in messages %}
-			<div class="alert alert-{{ category }}">{{ message }}</div>
-			{% endfor %} {% endif %} {% endwith %} {% block content %}{% endblock %}
+			messages %}
+			<div class="flash-stack">
+				{% for category, message in messages %}
+				<div class="alert alert-{{ category }}">{{ message }}</div>
+				{% endfor %}
+			</div>
+			{% endif %} {% endwith %} {% block content %}{% endblock %}
 		</main>
 
 		<footer class="site-footer">
-			<div class="container">
-				<p>Курсова робота: класифікація фейкових новин та тематика</p>
+			<div class="container footer-wrap">
+				<p>News AI Platform: fake-news detection + topic classification</p>
+				<p>PostgreSQL / Neon ready</p>
 			</div>
 		</footer>
 	</body>

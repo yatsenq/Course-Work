@@ -1,35 +1,266 @@
-{% extends 'base.html' %} {% block title %}Кабінет{% endblock %} {% block
-content %}
-<section class="card">
-	<h2>Аналіз новини</h2>
-	<form method="post">
-		<label>Введіть текст новини</label>
-		<textarea name="news_text" rows="8" required>{{ text }}</textarea>
-		<button type="submit" class="btn btn-primary">Запустити аналіз</button>
-	</form>
-</section>
-
-{% if result %}
-<section class="grid-2">
-	<article class="card result-card">
-		<h3>Правдивість</h3>
-		<p class="status {{ 'ok' if result.fake_label == 'TRUE' else 'bad' }}">
-			{{ result.fake_label }}
+{% extends 'base.html' %} {% block title %}Аналітична панель{% endblock %} {%
+block content %}
+<section class="hero hero-dashboard">
+	<div class="hero-copy">
+		<div class="eyebrow">Аналітична панель</div>
+		<h1>
+			Встав новину, натисни аналіз і подивись результат без зайвих блоків.
+		</h1>
+		<p>
+			Показуємо TRUE / FAKE з відсотками, тему, маркери, історію перевірок і
+			PDF-звіт. {% if current_user.is_authenticated %}Результати зберігаються в
+			базі.{% else %}У гостьовому режимі результат не зберігається.{% endif %}
 		</p>
-		<p>Впевненість: {{ '%.2f'|format(result.fake_confidence * 100) }}%</p>
-		<p>TRUE: {{ '%.2f'|format(result.prob_true * 100) }}%</p>
-		<p>FAKE: {{ '%.2f'|format(result.prob_fake * 100) }}%</p>
-	</article>
-
-	<article class="card result-card">
-		<h3>Тема</h3>
-		<p class="theme-name">{{ result.theme }}</p>
-		<p>Впевненість: {{ '%.2f'|format(result.theme_confidence * 100) }}%</p>
-		<ul>
-			{% for item in result.theme_distribution %}
-			<li>{{ item.theme }}: {{ '%.2f'|format(item.probability * 100) }}%</li>
-			{% endfor %}
-		</ul>
-	</article>
+		<div class="hero-pills">
+			<span class="pill">TRUE / FAKE + %</span>
+			<span class="pill">Тема та маркери</span>
+			<span class="pill">Історія / PDF</span>
+		</div>
+	</div>
+	<div class="hero-panel hero-panel-small">
+		<div class="status-card status-card-bright">
+			<span class="status-label">Режим</span>
+			<strong
+				>{% if current_user.is_authenticated %}Акаунт{% else %}Гість{% endif
+				%}</strong
+			>
+			<p>
+				{% if current_user.is_authenticated %}Перевірки зберігаються в БД.{%
+				else %}Історія не зберігається.{% endif %}
+			</p>
+		</div>
+	</div>
 </section>
-{% endif %} {% endblock %}
+
+<section class="workspace-grid">
+	<div class="card editor-card">
+		<div class="section-heading compact">
+			<div>
+				<h2>Текст новини</h2>
+			</div>
+			<p>Можна вставити свій текст або підставити приклад.</p>
+		</div>
+		<form method="post" class="analysis-form" id="analysisForm">
+			<label for="newsText">Введи текст новини</label>
+			<textarea
+				id="newsText"
+				name="news_text"
+				rows="12"
+				placeholder="Встав сюди новину..."
+			>
+{{ text }}</textarea
+			>
+			<div class="form-actions">
+				<button type="submit" class="btn btn-primary">Провести аналіз</button>
+				<button type="button" class="btn btn-secondary" id="clearTextButton">
+					Очистити поле
+				</button>
+			</div>
+		</form>
+
+		<div class="example-section">
+			<h3>Приклади новин</h3>
+			<div class="example-grid">
+				{% for example in examples %}
+				<button
+					type="button"
+					class="example-card"
+					data-example="{{ example.text|e }}"
+				>
+					<span>{{ example.title }}</span>
+					<small>Заповнити поле</small>
+				</button>
+				{% endfor %}
+			</div>
+		</div>
+	</div>
+
+	<div class="insight-stack">
+		{% if result %}
+		<article class="card result-card result-hero">
+			<div class="section-heading compact">
+				<div>
+					<h2>Результат аналізу</h2>
+				</div>
+				<p>Згенеровано для поточного тексту.</p>
+			</div>
+			<div class="verdict-row">
+				<div>
+					<span class="status-label">Правдивість</span>
+					<div
+						class="verdict-badge verdict-{{ 'true' if result.fake_label == 'TRUE' else 'fake' }}"
+					>
+						{{ result.fake_label }}
+					</div>
+				</div>
+				<div class="confidence-box">
+					<strong>{{ '%.2f'|format(result.fake_confidence * 100) }}%</strong>
+					<span>впевненість</span>
+				</div>
+			</div>
+			<div class="meter-group">
+				<div class="meter-row">
+					<div>
+						<span>TRUE</span>
+						<strong>{{ '%.2f'|format(result.prob_true * 100) }}%</strong>
+					</div>
+					<div class="meter">
+						<span style="width: {{ result.prob_true * 100 }}%"></span>
+					</div>
+				</div>
+				<div class="meter-row">
+					<div>
+						<span>FAKE</span>
+						<strong>{{ '%.2f'|format(result.prob_fake * 100) }}%</strong>
+					</div>
+					<div class="meter">
+						<span style="width: {{ result.prob_fake * 100 }}%"></span>
+					</div>
+				</div>
+			</div>
+			<form
+				method="post"
+				action="{{ url_for('download_report') }}"
+				class="report-actions"
+			>
+				<textarea name="analysis_json" hidden>{{ result | tojson }}</textarea>
+				<button type="submit" class="btn btn-secondary">Завантажити PDF</button>
+			</form>
+		</article>
+
+		<article class="card result-card">
+			<div class="section-heading compact">
+				<div>
+					<h2>Тематична категорія</h2>
+				</div>
+				<p>Категорія та розподіл ймовірностей.</p>
+			</div>
+			<div class="theme-panel">
+				<div>
+					<span class="status-label">Категорія</span>
+					<div class="theme-badge">{{ result.theme }}</div>
+				</div>
+				<div class="confidence-box dark">
+					<strong>{{ '%.2f'|format(result.theme_confidence * 100) }}%</strong>
+					<span>впевненість</span>
+				</div>
+			</div>
+			<div class="theme-distribution">
+				{% for item in result.theme_distribution %}
+				<div class="theme-row">
+					<div class="theme-row-top">
+						<span>{{ item.theme }}</span>
+						<strong>{{ '%.2f'|format(item.probability * 100) }}%</strong>
+					</div>
+					<div class="meter">
+						<span style="width: {{ item.probability * 100 }}%"></span>
+					</div>
+				</div>
+				{% endfor %}
+			</div>
+			<div class="marker-box">
+				<h3>Ключові слова-маркери</h3>
+				{% if result.theme_markers %}
+				<div class="marker-cloud">
+					{% for marker in result.theme_markers %}
+					<span class="marker-chip"
+						>{{ marker.keyword }}
+						<small>{{ '%.3f'|format(marker.score) }}</small></span
+					>
+					{% endfor %}
+				</div>
+				{% else %}
+				<p>Для цієї теми маркери не вдалося витягнути.</p>
+				{% endif %}
+			</div>
+		</article>
+		{% else %}
+		<article class="card placeholder-card">
+			<div class="eyebrow">Готово до аналізу</div>
+			<h2>Результати з’являться тут після натискання кнопки.</h2>
+			<p>Є приклади, очищення поля, гостьовий режим і PDF-звіт.</p>
+		</article>
+		{% endif %}
+	</div>
+</section>
+
+<section class="card history-card" id="history">
+	<div class="section-heading compact">
+		<div>
+			<div class="eyebrow">Історія</div>
+			<h2>Перевірки</h2>
+		</div>
+		<div class="history-actions-top">
+			{% if current_user.is_authenticated %}
+			<form
+				method="post"
+				action="{{ url_for('clear_history') }}"
+				onsubmit="return confirm('Очистити історію перевірок?')"
+			>
+				<button type="submit" class="btn btn-danger">Очистити історію</button>
+			</form>
+			{% else %}
+			<span class="history-note">Історія доступна після входу в акаунт.</span>
+			{% endif %}
+		</div>
+	</div>
+
+	{% if current_user.is_authenticated %} {% if history_items %}
+	<div class="history-list">
+		{% for item in history_items %}
+		<article class="history-item">
+			<div class="history-item-head">
+				<div>
+					<strong>{{ item.fake_label }}</strong>
+					<span>{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+				</div>
+				<div class="history-badges">
+					<span class="chip">{{ item.theme }}</span>
+					<span class="chip chip-soft"
+						>TRUE {{ '%.1f'|format(item.prob_true * 100) }}%</span
+					>
+					<span class="chip chip-soft"
+						>FAKE {{ '%.1f'|format(item.prob_fake * 100) }}%</span
+					>
+				</div>
+			</div>
+			<p>{{ item.input_text }}</p>
+			<div class="history-item-footer">
+				<form method="post" action="{{ url_for('download_report') }}">
+					<input type="hidden" name="history_id" value="{{ item.id }}" />
+					<button type="submit" class="btn btn-secondary">PDF</button>
+				</form>
+			</div>
+		</article>
+		{% endfor %}
+	</div>
+	{% else %}
+	<p class="empty-state">Ще немає збережених перевірок. Зроби перший аналіз.</p>
+	{% endif %} {% else %}
+	<p class="empty-state">
+		Гостьовий режим не зберігає історію. Увійди, якщо хочеш зберігати перевірки
+		в БД.
+	</p>
+	{% endif %}
+</section>
+
+<script>
+	document.addEventListener('DOMContentLoaded', () => {
+		const textarea = document.getElementById('newsText')
+		const clearButton = document.getElementById('clearTextButton')
+		const exampleButtons = document.querySelectorAll('[data-example]')
+
+		exampleButtons.forEach(button => {
+			button.addEventListener('click', () => {
+				textarea.value = button.dataset.example || ''
+				textarea.focus()
+			})
+		})
+
+		clearButton.addEventListener('click', () => {
+			textarea.value = ''
+			textarea.focus()
+		})
+	})
+</script>
+{% endblock %}

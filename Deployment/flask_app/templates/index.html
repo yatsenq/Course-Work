@@ -1,23 +1,85 @@
 {% extends 'base.html' %} {% block title %}Головна | News AI Platform{% endblock
 %} {% block content %}
-<section class="hero">
-	<h1>Платформа Аналізу Новин</h1>
-	<p>
-		Веб-система для визначення правдивості новин (BERT) та класифікації тематики
-		(SVM). Підтримує реєстрацію користувачів, вхід та персональний кабінет для
-		аналізу текстів.
-	</p>
-	<div class="hero-actions">
-		{% if current_user.is_authenticated %}
-		<a class="btn btn-primary" href="{{ url_for('dashboard') }}"
-			>Перейти в кабінет</a
-		>
-		{% else %}
-		<a class="btn btn-primary" href="{{ url_for('register') }}"
-			>Створити акаунт</a
-		>
-		<a class="btn btn-secondary" href="{{ url_for('login') }}">Увійти</a>
-		{% endif %}
+<section class="hero hero-home">
+	<div class="hero-copy">
+		<div class="eyebrow">AI-аналітика новин</div>
+		<h1>Перевіряй новини, тему і маркери в одному інтерфейсі.</h1>
+		<p>
+			Встав текст новини, запусти аналіз і отримай TRUE / FAKE, тематичну
+			категорію, ключові маркери та PDF-звіт. За бажанням результат можна
+			зберігати в акаунті.
+		</p>
+		<div class="hero-actions">
+			<a class="btn btn-primary" href="{{ url_for('dashboard') }}"
+				>Почати аналіз</a
+			>
+			{% if not current_user.is_authenticated %}
+			<a class="btn btn-secondary" href="{{ url_for('guest') }}"
+				>Увійти як гість</a
+			>
+			{% endif %}
+		</div>
+		<div class="hero-pills">
+			<span class="pill">TRUE / FAKE + %</span>
+			<span class="pill">Тема та маркери</span>
+			<span class="pill">PDF і історія</span>
+		</div>
+	</div>
+
+	<div class="hero-panel">
+		<div class="status-card status-card-bright">
+			<span class="status-label">Стан платформи</span>
+			<strong>Готово до перевірки</strong>
+			<p>Текст, приклади, аналіз, тема, маркери, історія та PDF-звіт.</p>
+		</div>
+		<div class="mini-grid">
+			<div class="mini-stat">
+				<span>Показує</span>
+				<strong>TRUE / FAKE</strong>
+			</div>
+			<div class="mini-stat">
+				<span>Показує</span>
+				<strong>тему</strong>
+			</div>
+			<div class="mini-stat">
+				<span>Показує</span>
+				<strong>маркери</strong>
+			</div>
+			<div class="mini-stat">
+				<span>Показує</span>
+				<strong>PDF</strong>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section class="section-block">
+	<div class="section-heading">
+		<div>
+			<div class="eyebrow">Можливості</div>
+			<h2>Що доступно зараз</h2>
+		</div>
+		<p>
+			Коротко: текст, приклад, очищення, аналіз, тема, маркери, історія та PDF.
+		</p>
+	</div>
+	<div class="feature-grid">
+		<div class="feature-card feature-card-lite">
+			<span>Текст</span>
+			<p>Вставити власну новину або підставити приклад.</p>
+		</div>
+		<div class="feature-card feature-card-lite">
+			<span>Аналіз</span>
+			<p>Отримати оцінку TRUE / FAKE та відсоток впевненості.</p>
+		</div>
+		<div class="feature-card feature-card-lite">
+			<span>Тема</span>
+			<p>Побачити категорію новини й тематичні маркери.</p>
+		</div>
+		<div class="feature-card feature-card-lite">
+			<span>Звіт</span>
+			<p>Завантажити PDF або переглянути історію перевірок.</p>
+		</div>
 	</div>
 </section>
 {% endblock %}

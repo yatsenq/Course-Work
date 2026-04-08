@@ -1,15 +1,31 @@
 {% extends 'base.html' %} {% block title %}Вхід{% endblock %} {% block content
 %}
-<section class="card auth-card">
-	<h2>Вхід</h2>
-	<form method="post">
-		<label>Email</label>
-		<input type="email" name="email" required />
+<section class="auth-shell">
+	<div class="card auth-card">
+		<div class="eyebrow">Акаунт</div>
+		<h2>Вхід у систему</h2>
+		<p>
+			З акаунтом історія зберігається в БД. Без акаунта можна працювати як
+			гість.
+		</p>
+		<form method="post">
+			<label>Email</label>
+			<input
+				type="email"
+				name="email"
+				placeholder="name@example.com"
+				required
+			/>
 
-		<label>Пароль</label>
-		<input type="password" name="password" required />
+			<label>Пароль</label>
+			<input type="password" name="password" placeholder="••••••••" required />
 
-		<button type="submit" class="btn btn-primary">Увійти</button>
-	</form>
+			<button type="submit" class="btn btn-primary">Увійти</button>
+		</form>
+		<div class="auth-links">
+			<a href="{{ url_for('guest') }}">Увійти як гість</a>
+			<a href="{{ url_for('register') }}">Створити акаунт</a>
+		</div>
+	</div>
 </section>
 {% endblock %}
