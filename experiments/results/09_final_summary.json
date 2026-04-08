@@ -1,0 +1,14 @@
+{
+  "fake_detection": {
+    "models_compared": 6,
+    "best_overall": "02_HeadC",
+    "best_f1": 0.9294220998392692,
+    "best_roc_auc": 0.9828527419288102
+  },
+  "topic_classification": {
+    "models_compared": 4,
+    "best_overall": "07_BERT_ExpB",
+    "best_macro_f1": 0.9771609029021819,
+    "best_accuracy": 0.9771666666666666
+  }
+}

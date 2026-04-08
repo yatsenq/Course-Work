@@ -1,0 +1,25 @@
+{
+  "metrics": {
+    "accuracy": 0.9458666666666666,
+    "precision": 0.9460339216974754,
+    "recall": 0.9458666666666666,
+    "f1": 0.9458776099574269,
+    "roc_auc_ovr_weighted": 0.9949257222222222
+  },
+  "model_name": "06_BERT_Topic_HeadA",
+  "classes": [
+    "бізнес",
+    "новини",
+    "політика",
+    "спорт",
+    "технології"
+  ],
+  "hyperparameters": {
+    "max_len": 256,
+    "batch_size": 8,
+    "epochs": 3,
+    "lr": 1e-05,
+    "dropout": 0.4,
+    "weight_decay": 0.01
+  }
+}
