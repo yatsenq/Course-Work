@@ -1,10 +1,10 @@
 {
   "metrics": {
-    "accuracy": 0.9458666666666666,
-    "precision": 0.9460339216974754,
-    "recall": 0.9458666666666666,
-    "f1": 0.9458776099574269,
-    "roc_auc_ovr_weighted": 0.9949257222222222
+    "accuracy": 0.9468,
+    "precision": 0.946803802532574,
+    "recall": 0.9468,
+    "f1": 0.946784253864368,
+    "roc_auc_ovr_weighted": 0.9948245111111111
   },
   "model_name": "06_BERT_Topic_HeadA",
   "classes": [
@@ -16,7 +16,7 @@
   ],
   "hyperparameters": {
     "max_len": 256,
-    "batch_size": 8,
+    "batch_size": 16,
     "epochs": 3,
     "lr": 1e-05,
     "dropout": 0.4,
