@@ -1,0 +1,70 @@
+{% extends 'base.html' %} {% block title %}Історія перевірок{% endblock %} {%
+block content %}
+<section class="hero hero-single dashboard-hero">
+	<div class="hero-copy">
+		<div class="eyebrow">Історія</div>
+		<h1>Детальна історія перевірок</h1>
+		<p>
+			Усі ваші перевірки в одному місці. Тут можна переглянути запис і
+			завантажити PDF-звіт.
+		</p>
+		<div class="hero-actions">
+			<a class="btn btn-secondary" href="{{ url_for('dashboard') }}"
+				>Назад до аналізу</a
+			>
+		</div>
+	</div>
+</section>
+
+<section class="card history-card history-full-card">
+	<div class="section-heading compact">
+		<div>
+			<h2>Всі перевірки</h2>
+		</div>
+		<div class="history-actions-top">
+			<form
+				method="post"
+				action="{{ url_for('clear_history') }}"
+				onsubmit="return confirm('Очистити всю історію перевірок?')"
+			>
+				<button type="submit" class="btn btn-danger">Очистити історію</button>
+			</form>
+		</div>
+	</div>
+
+	{% if history_items %}
+	<div class="history-list history-list-full">
+		{% for item in history_items %}
+		<article class="history-item history-item-full">
+			<div class="history-item-head">
+				<div>
+					<strong>{{ item.fake_label }}</strong>
+					<span>{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+				</div>
+				<div class="history-badges">
+					<span class="chip">{{ item.theme }}</span>
+					<span class="chip chip-soft"
+						>TRUE {{ '%.1f'|format(item.prob_true * 100) }}%</span
+					>
+					<span class="chip chip-soft"
+						>FAKE {{ '%.1f'|format(item.prob_fake * 100) }}%</span
+					>
+				</div>
+			</div>
+			<p class="history-text-full">{{ item.input_text }}</p>
+			<div class="history-item-footer">
+				<form method="post" action="{{ url_for('download_report') }}">
+					<input type="hidden" name="history_id" value="{{ item.id }}" />
+					<button type="submit" class="btn btn-secondary">
+						Завантажити PDF
+					</button>
+				</form>
+			</div>
+		</article>
+		{% endfor %}
+	</div>
+	{% else %}
+	<p class="empty-state">Ще немає збережених перевірок.</p>
+	{% endif %}
+</section>
+{% endblock %}

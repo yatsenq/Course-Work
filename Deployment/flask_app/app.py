@@ -3,7 +3,9 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import secrets
+import threading
 from datetime import datetime
 from functools import lru_cache
 from html import escape
@@ -22,7 +24,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from ml_service import predict_news_bundle
+from ml_service import load_all_models, predict_news_bundle
 
 
 def normalize_database_url(raw_url: str) -> str:
@@ -58,6 +60,11 @@ def load_env_file(env_path: Path) -> None:
         value = value.strip().strip('"').strip("'")
         if key:
             os.environ.setdefault(key, value)
+
+
+def is_valid_email(value: str) -> bool:
+    email_pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+    return bool(re.match(email_pattern, value.strip()))
 
 
 @lru_cache(maxsize=1)
@@ -194,16 +201,14 @@ def save_history_item(user_id: int, text: str, result: dict) -> None:
     db.session.commit()
 
 
-def get_history_items(limit: int = 12):
+def get_history_items(limit: int | None = 12):
     if not current_user.is_authenticated:
         return []
 
-    return (
-        CheckHistory.query.filter_by(user_id=current_user.id)
-        .order_by(CheckHistory.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    query = CheckHistory.query.filter_by(user_id=current_user.id).order_by(CheckHistory.created_at.desc())
+    if isinstance(limit, int) and limit > 0:
+        query = query.limit(limit)
+    return query.all()
 
 
 def build_pdf_buffer(payload: dict) -> io.BytesIO:
@@ -272,7 +277,18 @@ def build_pdf_buffer(payload: dict) -> io.BytesIO:
         ["Ймовірність TRUE", f"{payload.get('prob_true', 0) * 100:.2f}%"],
         ["Ймовірність FAKE", f"{payload.get('prob_fake', 0) * 100:.2f}%"],
     ]
-    story.append(Table(fake_rows, colWidths=[55 * mm, 90 * mm]))
+    fake_table = Table(fake_rows, colWidths=[55 * mm, 90 * mm])
+    fake_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), body_font),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+                ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+            ]
+        )
+    )
+    story.append(fake_table)
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("Тематична класифікація", section_style))
@@ -280,7 +296,18 @@ def build_pdf_buffer(payload: dict) -> io.BytesIO:
         ["Категорія", payload.get("theme", "—")],
         ["Впевненість", f"{payload.get('theme_confidence', 0) * 100:.2f}%"],
     ]
-    story.append(Table(topic_rows, colWidths=[55 * mm, 90 * mm]))
+    topic_table = Table(topic_rows, colWidths=[55 * mm, 90 * mm])
+    topic_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), body_font),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+                ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+            ]
+        )
+    )
+    story.append(topic_table)
     story.append(Spacer(1, 8))
 
     markers = payload.get("theme_markers") or []
@@ -320,8 +347,31 @@ def inject_globals():
     }
 
 
+_model_preload_started = False
+_model_preload_lock = threading.Lock()
+
+
+def ensure_model_preload() -> None:
+    global _model_preload_started
+
+    with _model_preload_lock:
+        if _model_preload_started:
+            return
+        _model_preload_started = True
+
+    def _load() -> None:
+        try:
+            load_all_models(MODEL_BASE_DIR)
+        except Exception:
+            # If preload fails, regular request path will still retry and show user-facing error.
+            pass
+
+    threading.Thread(target=_load, daemon=True).start()
+
+
 @app.route("/")
 def index():
+    ensure_model_preload()
     return render_template("index.html")
 
 
@@ -337,6 +387,8 @@ def guest():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    ensure_model_preload()
+
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
@@ -347,6 +399,10 @@ def register():
 
         if not username or not email or not password:
             flash("Усі поля обов'язкові.", "error")
+            return redirect(url_for("register"))
+
+        if not is_valid_email(email):
+            flash("Введіть коректний email.", "error")
             return redirect(url_for("register"))
 
         if len(password) < 6:
@@ -370,12 +426,18 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    ensure_model_preload()
+
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+
+        if not is_valid_email(email):
+            flash("Введіть коректний email.", "error")
+            return redirect(url_for("login"))
 
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password_hash, password):
@@ -400,6 +462,8 @@ def logout():
 
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
+    ensure_model_preload()
+
     result = None
     text = ""
 
@@ -417,7 +481,7 @@ def dashboard():
             except Exception as exc:
                 flash(f"Помилка аналізу: {exc}", "error")
 
-    history_items = get_history_items()
+    history_items = get_history_items(limit=5)
     return render_template(
         "dashboard.html",
         result=result,
@@ -427,13 +491,21 @@ def dashboard():
     )
 
 
+@app.route("/history", endpoint="history")
+@login_required
+def history():
+    history_items = get_history_items(limit=None)
+    return render_template("history.html", history_items=history_items)
+
+
 @app.route("/history/clear", methods=["POST"])
 @login_required
 def clear_history():
     CheckHistory.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
     flash("Історію перевірок очищено.", "success")
-    return redirect(url_for("dashboard"))
+    next_url = request.referrer or url_for("dashboard")
+    return redirect(next_url)
 
 
 @app.route("/download-report", methods=["POST"])
@@ -476,7 +548,18 @@ def init_db_command():
 
 with app.app_context():
     db.create_all()
+    print("=== ROUTES ===")
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint} -> {rule.rule}")
+    print("==============")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    debug_mode = os.getenv("FLASK_DEBUG", "1").strip().lower() in {"1", "true", "yes", "on"}
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=debug_mode,
+        use_reloader=False,
+        load_dotenv=False,
+    )

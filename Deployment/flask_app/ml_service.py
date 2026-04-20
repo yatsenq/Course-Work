@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 import os
 import pickle
 import re
+import threading
 
 import numpy as np
 import pymorphy3
@@ -90,6 +90,9 @@ HEAD_CLASSES = {
 DEFAULT_FAKE_CHECKPOINT = Path("experiments") / "models" / "02" / "bert_fake_headc_best.pt"
 DEFAULT_TOPIC_CHECKPOINT = Path("experiments") / "models" / "07" / "bert_topic_expb_detector_best.pt"
 DEFAULT_TOPIC_LABEL_ENCODER = Path("experiments") / "models" / "07" / "label_encoder.pkl"
+
+_MODEL_RESOURCES_LOCK = threading.Lock()
+_MODEL_RESOURCES_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def _load_checkpoint(path: Path, device: torch.device):
@@ -260,89 +263,100 @@ def _build_theme_markers(
     return markers[:top_n]
 
 
-@lru_cache(maxsize=1)
 def load_all_models(model_base_dir: str) -> dict[str, Any]:
-    base = Path(model_base_dir)
-    detector_dir = base / "Models" / "DETECTOR" / "BERT"
-    theme_dir = base / "Models" / "THEME"
-    stopwords_path = base / "Models" / "stopwords_ua.txt"
+    model_key = str(Path(model_base_dir).resolve())
+    cached = _MODEL_RESOURCES_CACHE.get(model_key)
+    if cached is not None:
+        return cached
 
-    fake_checkpoint_path = _resolve_path(base, Path(os.getenv("FAKE_CHECKPOINT", str(DEFAULT_FAKE_CHECKPOINT))))
-    topic_checkpoint_path = _resolve_path(base, Path(os.getenv("TOPIC_CHECKPOINT", str(DEFAULT_TOPIC_CHECKPOINT))))
-    topic_label_encoder_path = _resolve_path(base, Path(os.getenv("TOPIC_LABEL_ENCODER", str(DEFAULT_TOPIC_LABEL_ENCODER))))
-    tokenizer_path = detector_dir / "bert_tokenizer"
-    vectorizer_path = theme_dir / "theme_vectorizer.pkl"
-    theme_model_path = theme_dir / "theme_model.pkl"
+    with _MODEL_RESOURCES_LOCK:
+        cached = _MODEL_RESOURCES_CACHE.get(model_key)
+        if cached is not None:
+            return cached
 
-    for path in [fake_checkpoint_path, topic_checkpoint_path, topic_label_encoder_path, tokenizer_path, vectorizer_path, theme_model_path, stopwords_path]:
-        if not path.exists():
-            raise FileNotFoundError(f"Не знайдено файл моделі: {path}")
+        base = Path(model_base_dir)
+        detector_dir = base / "Models" / "DETECTOR" / "BERT"
+        theme_dir = base / "Models" / "THEME"
+        stopwords_path = base / "Models" / "stopwords_ua.txt"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        fake_checkpoint_path = _resolve_path(base, Path(os.getenv("FAKE_CHECKPOINT", str(DEFAULT_FAKE_CHECKPOINT))))
+        topic_checkpoint_path = _resolve_path(base, Path(os.getenv("TOPIC_CHECKPOINT", str(DEFAULT_TOPIC_CHECKPOINT))))
+        topic_label_encoder_path = _resolve_path(base, Path(os.getenv("TOPIC_LABEL_ENCODER", str(DEFAULT_TOPIC_LABEL_ENCODER))))
+        tokenizer_path = detector_dir / "bert_tokenizer"
+        vectorizer_path = theme_dir / "theme_vectorizer.pkl"
+        theme_model_path = theme_dir / "theme_model.pkl"
 
-    fake_checkpoint = _load_checkpoint(fake_checkpoint_path, device)
-    fake_head_type = _checkpoint_head_type(
-        fake_checkpoint_path,
-        fake_checkpoint,
-        fake_checkpoint.get("model_state_dict", fake_checkpoint),
-    )
-    fake_model_name = _backbone_name(fake_checkpoint)
-    fake_max_len = fake_checkpoint.get("max_len", 256)
-    fake_num_classes = int(fake_checkpoint.get("num_classes", 2))
+        for path in [fake_checkpoint_path, topic_checkpoint_path, topic_label_encoder_path, tokenizer_path, vectorizer_path, theme_model_path, stopwords_path]:
+            if not path.exists():
+                raise FileNotFoundError(f"Не знайдено файл моделі: {path}")
 
-    topic_checkpoint = _load_checkpoint(topic_checkpoint_path, device)
-    topic_head_type = _checkpoint_head_type(
-        topic_checkpoint_path,
-        topic_checkpoint,
-        topic_checkpoint.get("model_state_dict", topic_checkpoint),
-    )
-    topic_model_name = _backbone_name(topic_checkpoint)
-    topic_max_len = topic_checkpoint.get("max_len", 256)
-    topic_num_classes = int(topic_checkpoint.get("num_classes", 2))
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    fake_model_cls = HEAD_CLASSES[fake_head_type]
-    topic_model_cls = HEAD_CLASSES[topic_head_type]
+        fake_checkpoint = _load_checkpoint(fake_checkpoint_path, device)
+        fake_head_type = _checkpoint_head_type(
+            fake_checkpoint_path,
+            fake_checkpoint,
+            fake_checkpoint.get("model_state_dict", fake_checkpoint),
+        )
+        fake_model_name = _backbone_name(fake_checkpoint)
+        fake_max_len = fake_checkpoint.get("max_len", 256)
+        fake_num_classes = int(fake_checkpoint.get("num_classes", 2))
 
-    fake_detector = fake_model_cls(fake_model_name, num_classes=fake_num_classes).to(device)
-    topic_detector = topic_model_cls(topic_model_name, num_classes=topic_num_classes).to(device)
+        topic_checkpoint = _load_checkpoint(topic_checkpoint_path, device)
+        topic_head_type = _checkpoint_head_type(
+            topic_checkpoint_path,
+            topic_checkpoint,
+            topic_checkpoint.get("model_state_dict", topic_checkpoint),
+        )
+        topic_model_name = _backbone_name(topic_checkpoint)
+        topic_max_len = topic_checkpoint.get("max_len", 256)
+        topic_num_classes = int(topic_checkpoint.get("num_classes", 2))
 
-    fake_state = fake_checkpoint.get("model_state_dict", fake_checkpoint)
-    topic_state = topic_checkpoint.get("model_state_dict", topic_checkpoint)
-    fake_detector.load_state_dict(fake_state)
-    topic_detector.load_state_dict(topic_state)
+        fake_model_cls = HEAD_CLASSES[fake_head_type]
+        topic_model_cls = HEAD_CLASSES[topic_head_type]
 
-    fake_detector.eval()
-    topic_detector.eval()
+        fake_detector = fake_model_cls(fake_model_name, num_classes=fake_num_classes).to(device)
+        topic_detector = topic_model_cls(topic_model_name, num_classes=topic_num_classes).to(device)
 
-    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_path)
+        fake_state = fake_checkpoint.get("model_state_dict", fake_checkpoint)
+        topic_state = topic_checkpoint.get("model_state_dict", topic_checkpoint)
+        fake_detector.load_state_dict(fake_state)
+        topic_detector.load_state_dict(topic_state)
 
-    with open(vectorizer_path, "rb") as f:
-        theme_vectorizer = pickle.load(f)
+        fake_detector.eval()
+        topic_detector.eval()
 
-    with open(theme_model_path, "rb") as f:
-        theme_model = pickle.load(f)
+        tokenizer = BertTokenizerFast.from_pretrained(tokenizer_path)
 
-    with open(topic_label_encoder_path, "rb") as f:
-        topic_label_encoder = pickle.load(f)
+        with open(vectorizer_path, "rb") as f:
+            theme_vectorizer = pickle.load(f)
 
-    with open(stopwords_path, "r", encoding="utf-8") as f:
-        stopwords = set(f.read().split())
+        with open(theme_model_path, "rb") as f:
+            theme_model = pickle.load(f)
 
-    morph = pymorphy3.MorphAnalyzer(lang="uk")
+        with open(topic_label_encoder_path, "rb") as f:
+            topic_label_encoder = pickle.load(f)
 
-    return {
-        "device": device,
-        "fake_detector": fake_detector,
-        "topic_detector": topic_detector,
-        "tokenizer": tokenizer,
-        "theme_vectorizer": theme_vectorizer,
-        "theme_model": theme_model,
-        "topic_label_encoder": topic_label_encoder,
-        "stopwords": stopwords,
-        "morph": morph,
-        "fake_max_len": fake_max_len,
-        "topic_max_len": topic_max_len,
-    }
+        with open(stopwords_path, "r", encoding="utf-8") as f:
+            stopwords = set(f.read().split())
+
+        morph = pymorphy3.MorphAnalyzer(lang="uk")
+
+        resources = {
+            "device": device,
+            "fake_detector": fake_detector,
+            "topic_detector": topic_detector,
+            "tokenizer": tokenizer,
+            "theme_vectorizer": theme_vectorizer,
+            "theme_model": theme_model,
+            "topic_label_encoder": topic_label_encoder,
+            "stopwords": stopwords,
+            "morph": morph,
+            "fake_max_len": fake_max_len,
+            "topic_max_len": topic_max_len,
+        }
+        _MODEL_RESOURCES_CACHE[model_key] = resources
+        return resources
 
 
 def preprocess_for_theme(text: str, stopwords: set[str], morph: pymorphy3.MorphAnalyzer) -> str:

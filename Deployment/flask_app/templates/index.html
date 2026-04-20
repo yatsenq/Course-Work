@@ -2,13 +2,9 @@
 %} {% block content %}
 <section class="hero hero-home">
 	<div class="hero-copy">
-		<div class="eyebrow">AI-аналітика новин</div>
-		<h1>Перевіряй новини, тему і маркери в одному інтерфейсі.</h1>
-		<p>
-			Встав текст новини, запусти аналіз і отримай TRUE / FAKE, тематичну
-			категорію, ключові маркери та PDF-звіт. За бажанням результат можна
-			зберігати в акаунті.
-		</p>
+		<div class="eyebrow">Перевірка новин</div>
+		<h1>Один текст, один клік, зрозумілий результат.</h1>
+		<p>TRUE / FAKE, тема, маркери та PDF-звіт в одному місці.</p>
 		<div class="hero-actions">
 			<a class="btn btn-primary" href="{{ url_for('dashboard') }}"
 				>Почати аналіз</a
@@ -20,33 +16,33 @@
 			{% endif %}
 		</div>
 		<div class="hero-pills">
-			<span class="pill">TRUE / FAKE + %</span>
-			<span class="pill">Тема та маркери</span>
-			<span class="pill">PDF і історія</span>
+			<span class="pill">TRUE / FAKE</span>
+			<span class="pill">Тема</span>
+			<span class="pill">PDF</span>
 		</div>
 	</div>
 
 	<div class="hero-panel">
 		<div class="status-card status-card-bright">
-			<span class="status-label">Стан платформи</span>
-			<strong>Готово до перевірки</strong>
-			<p>Текст, приклади, аналіз, тема, маркери, історія та PDF-звіт.</p>
+			<span class="status-label">Швидко</span>
+			<strong>Готово до роботи</strong>
+			<p>Встав текст або обери приклад і запускай.</p>
 		</div>
 		<div class="mini-grid">
 			<div class="mini-stat">
-				<span>Показує</span>
-				<strong>TRUE / FAKE</strong>
+				<span>Результат</span>
+				<strong>за секунди</strong>
 			</div>
 			<div class="mini-stat">
-				<span>Показує</span>
-				<strong>тему</strong>
+				<span>Історія</span>
+				<strong>в акаунті</strong>
 			</div>
 			<div class="mini-stat">
-				<span>Показує</span>
-				<strong>маркери</strong>
+				<span>Маркери</span>
+				<strong>для теми</strong>
 			</div>
 			<div class="mini-stat">
-				<span>Показує</span>
+				<span>Звіт</span>
 				<strong>PDF</strong>
 			</div>
 		</div>
@@ -57,28 +53,26 @@
 	<div class="section-heading">
 		<div>
 			<div class="eyebrow">Можливості</div>
-			<h2>Що доступно зараз</h2>
+			<h2>Що є на сайті</h2>
 		</div>
-		<p>
-			Коротко: текст, приклад, очищення, аналіз, тема, маркери, історія та PDF.
-		</p>
+		<p>Тільки головне, без зайвого.</p>
 	</div>
 	<div class="feature-grid">
 		<div class="feature-card feature-card-lite">
 			<span>Текст</span>
-			<p>Вставити власну новину або підставити приклад.</p>
+			<p>Встав свій текст або приклад.</p>
 		</div>
 		<div class="feature-card feature-card-lite">
 			<span>Аналіз</span>
-			<p>Отримати оцінку TRUE / FAKE та відсоток впевненості.</p>
+			<p>Отримай TRUE / FAKE і %.</p>
 		</div>
 		<div class="feature-card feature-card-lite">
 			<span>Тема</span>
-			<p>Побачити категорію новини й тематичні маркери.</p>
+			<p>Категорія і ключові слова.</p>
 		</div>
 		<div class="feature-card feature-card-lite">
 			<span>Звіт</span>
-			<p>Завантажити PDF або переглянути історію перевірок.</p>
+			<p>PDF і історія перевірок.</p>
 		</div>
 	</div>
 </section>

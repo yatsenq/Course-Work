@@ -4,25 +4,20 @@ content %}
 	<div class="card auth-card">
 		<div class="eyebrow">Реєстрація</div>
 		<h2>Створити акаунт</h2>
-		<p>Після реєстрації історія перевірок зберігатиметься у базі даних.</p>
-		<form method="post">
+		<p>Після входу історія перевірок буде зберігатися автоматично.</p>
+		<form method="post" class="auth-form">
 			<label>Ім'я користувача</label>
-			<input type="text" name="username" placeholder="your_name" required />
+			<input type="text" name="username" placeholder="Ваше ім'я" required />
 
 			<label>Email</label>
-			<input
-				type="email"
-				name="email"
-				placeholder="name@example.com"
-				required
-			/>
+			<input type="email" name="email" placeholder="you@example.com" required />
 
 			<label>Пароль</label>
 			<input
 				type="password"
 				name="password"
 				minlength="6"
-				placeholder="мінімум 6 символів"
+				placeholder="Не менше 6 символів"
 				required
 			/>
 

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="uk">
 	<head>
 		<meta charset="utf-8" />
@@ -8,7 +8,7 @@
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
-			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
 			rel="stylesheet"
 		/>
 		<link
@@ -27,7 +27,6 @@
 					<a href="{{ url_for('index') }}">Головна</a>
 					<a href="{{ url_for('dashboard') }}">Аналіз</a>
 					{% if current_user.is_authenticated %}
-					<a href="{{ url_for('dashboard') }}#history">Історія</a>
 					<span class="nav-user">{{ current_user.username }}</span>
 					<a class="nav-action" href="{{ url_for('logout') }}">Вийти</a>
 					{% else %}
@@ -52,8 +51,8 @@
 
 		<footer class="site-footer">
 			<div class="container footer-wrap">
-				<p>News AI Platform: fake-news detection + topic classification</p>
-				<p>PostgreSQL / Neon ready</p>
+				<p>News AI Platform</p>
+				<p>Аналітика новин</p>
 			</div>
 		</footer>
 	</body>
