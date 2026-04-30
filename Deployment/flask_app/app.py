@@ -514,10 +514,27 @@ def build_pdf_buffer(payload: dict) -> io.BytesIO:
 
 @app.context_processor
 def inject_globals():
+    stats = None
+    if current_user.is_authenticated:
+        items = CheckHistory.query.filter_by(user_id=current_user.id).all()
+        total = len(items)
+        true_count = sum(1 for i in items if i.fake_label == "TRUE")
+        fake_count = total - true_count
+        themes = {}
+        for i in items:
+            themes[i.theme] = themes.get(i.theme, 0) + 1
+        top_theme = max(themes, key=themes.get) if themes else "—"
+        stats = {
+            "total": total,
+            "true_count": true_count,
+            "fake_count": fake_count,
+            "top_theme": top_theme,
+        }
     return {
         "examples": EXAMPLE_NEWS,
         "guest_mode": session.get("guest_mode", False) and not current_user.is_authenticated,
         "model_metrics": load_model_comparison_metrics(),
+        "stats": stats,
     }
 
 
@@ -535,7 +552,7 @@ def ensure_model_preload() -> None:
 
     def _load() -> None:
         try:
-            ml_service.load_all_models(MODEL_BASE_DIR)
+            ml_service.load_selected_models(MODEL_BASE_DIR)
         except Exception:
             # If preload fails, regular request path will still retry and show user-facing error.
             pass
@@ -647,38 +664,7 @@ def dashboard():
             flash("Введіть текст новини.", "error")
         else:
             try:
-                per_model_results = ml_service.predict_all_models(text, MODEL_BASE_DIR)
-
-                # choose best fake prediction by confidence for saving/display
-                fake_results = [m for m in per_model_results if m.get("task") == "fake"]
-                topic_results = [m for m in per_model_results if m.get("task") == "topic"]
-
-                best_fake = max(fake_results, key=lambda x: x.get("fake_confidence", 0), default=None)
-                best_topic = max(topic_results, key=lambda x: x.get("theme_confidence", 0), default=None)
-
-                result = {}
-                if best_fake:
-                    result["fake_label"] = best_fake.get("fake_label", "—")
-                    result["fake_confidence"] = best_fake.get("fake_confidence", 0.0)
-                    result["prob_true"] = best_fake.get("prob_true", 0.0)
-                    result["prob_fake"] = best_fake.get("prob_fake", 0.0)
-                if best_topic:
-                    result["theme"] = best_topic.get("theme", "—")
-                    result["theme_confidence"] = best_topic.get("theme_confidence", 0.0)
-                    result["theme_distribution"] = best_topic.get("theme_distribution", [])
-
-                # attempt to build theme markers using loaded resources
-                try:
-                    resources = ml_service.load_all_models(MODEL_BASE_DIR)
-                    clean_text = ml_service.preprocess_for_theme(text, resources.get("stopwords", set()), resources.get("morph"))
-                    theme_vector = resources["theme_vectorizer"].transform([clean_text])
-                    markers = ml_service._build_theme_markers(resources["theme_model"], resources["theme_vectorizer"], result.get("theme", ""), theme_vector)
-                    result["theme_markers"] = markers
-                except Exception:
-                    result["theme_markers"] = []
-
-                result["input_text"] = text
-                result["per_model_results"] = per_model_results
+                result = ml_service.predict_selected_models(text, MODEL_BASE_DIR)
 
                 if current_user.is_authenticated:
                     save_history_item(current_user.id, text, result)
