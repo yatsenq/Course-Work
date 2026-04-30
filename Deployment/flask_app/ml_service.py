@@ -433,3 +433,195 @@ def predict_news_bundle(text: str, model_base_dir: str) -> dict[str, Any]:
         "theme_distribution": theme_distribution,
         "theme_markers": theme_markers,
     }
+
+
+# --- Multi-model per-run inference -------------------------------------------------
+_MULTI_MODEL_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _pretty_ckpt_name(path: Path) -> str:
+    return path.stem.replace("_", " ")
+
+
+def predict_all_models(text: str, model_base_dir: str) -> list[dict[str, Any]]:
+    """Run all available saved models (fake & topic) on the given text and
+    return a list of per-model result dicts. This loads checkpoints and pickles
+    found under `experiments/models/*` and caches them by path.
+    """
+    base = Path(model_base_dir) / "experiments" / "models"
+    results: list[dict[str, Any]] = []
+
+    # load tokenizer if present
+    tokenizer = None
+    tok_path = base / "bert_tokenizer"
+    if tok_path.exists():
+        try:
+            tokenizer = BertTokenizerFast.from_pretrained(tok_path)
+        except Exception:
+            tokenizer = None
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Helper to run a pytorch checkpoint (fake or topic)
+    def _run_pt_checkpoint(path: Path, task: str):
+        cache_key = str(path.resolve())
+        entry = _MULTI_MODEL_CACHE.get(cache_key)
+        if entry is None:
+            ckpt = _load_checkpoint(path, device)
+            head_type = _checkpoint_head_type(path, ckpt, ckpt.get("model_state_dict", ckpt))
+            backbone = _backbone_name(ckpt)
+            max_len = int(ckpt.get("max_len", 256))
+            num_classes = int(ckpt.get("num_classes", 2))
+            model_cls = HEAD_CLASSES.get(head_type, BertClassifierHeadC)
+            model = model_cls(backbone, num_classes=num_classes).to(device)
+            state = ckpt.get("model_state_dict", ckpt)
+            try:
+                model.load_state_dict(state)
+            except Exception:
+                # try direct assignment if weights_only style
+                model.load_state_dict(state)
+            model.eval()
+            entry = {"model": model, "max_len": max_len}
+            _MULTI_MODEL_CACHE[cache_key] = entry
+
+        model = entry["model"]
+        max_len = entry["max_len"]
+
+        if tokenizer is None:
+            raise RuntimeError("Tokenizer not available for BERT model inference")
+
+        encoding = tokenizer(text, max_length=max_len, padding="max_length", truncation=True, return_tensors="pt")
+        input_ids = encoding["input_ids"].to(device)
+        attention_mask = encoding["attention_mask"].to(device)
+
+        with torch.no_grad():
+            logits = model(input_ids, attention_mask)
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+        if task == "fake":
+            prob_true = float(probs[1]) if len(probs) > 1 else float(probs[0])
+            prob_fake = float(probs[0]) if len(probs) > 1 else 1.0 - prob_true
+            label = "TRUE" if prob_true >= prob_fake else "FAKE"
+            return {
+                "name": _pretty_ckpt_name(path),
+                "task": "fake",
+                "prob_true": prob_true,
+                "prob_fake": prob_fake,
+                "fake_label": label,
+                "fake_confidence": max(prob_true, prob_fake),
+            }
+        else:
+            # topic
+            # try to locate a label encoder sibling (pkl) in same folder or parent
+            label_encoder = None
+            candidate = path.with_name("topic_label_encoder.pkl")
+            if not candidate.exists():
+                candidate = base / "07" / "label_encoder.pkl"
+            if candidate.exists():
+                try:
+                    with open(candidate, "rb") as f:
+                        label_encoder = pickle.load(f)
+                except Exception:
+                    label_encoder = None
+
+            theme_probs = probs.tolist()
+            classes = list(getattr(label_encoder, "classes_", [])) if label_encoder else [str(i) for i in range(len(theme_probs))]
+            idx = int(np.argmax(theme_probs))
+            theme = classes[idx] if idx < len(classes) else str(idx)
+            return {
+                "name": _pretty_ckpt_name(path),
+                "task": "topic",
+                "theme": theme,
+                "theme_confidence": float(theme_probs[idx]),
+                "theme_distribution": sorted([
+                    {"theme": cls, "probability": float(p)} for cls, p in zip(classes, theme_probs)
+                ], key=lambda x: x["probability"], reverse=True),
+            }
+
+    # 1) Fake detectors (all bert_fake_*.pt)
+    for ckpt in sorted(base.rglob("bert_fake*.pt")):
+        try:
+            out = _run_pt_checkpoint(ckpt, "fake")
+            results.append(out)
+        except Exception:
+            continue
+
+    # 2) Baseline logistic regression (if present)
+    logreg_path = base / "01" / "baseline_logreg_model.pkl"
+    vec_path = base / "01" / "baseline_logreg_vectorizer.pkl"
+    if logreg_path.exists() and vec_path.exists():
+        try:
+            with open(logreg_path, "rb") as f:
+                logreg = pickle.load(f)
+            with open(vec_path, "rb") as f:
+                vec = pickle.load(f)
+            vec_text = vec.transform([text])
+            proba = None
+            if hasattr(logreg, "predict_proba"):
+                proba = logreg.predict_proba(vec_text)[0]
+            else:
+                pred = logreg.predict(vec_text)[0]
+                # fallback: treat predicted class as 1.0
+                classes = getattr(logreg, "classes_", [0, 1])
+                proba = [0.0, 1.0] if pred == classes[-1] else [1.0, 0.0]
+
+            # assume class index 1 corresponds to TRUE
+            prob_true = float(proba[1]) if len(proba) > 1 else float(proba[0])
+            prob_fake = float(proba[0]) if len(proba) > 1 else 1.0 - prob_true
+            label = "TRUE" if prob_true >= prob_fake else "FAKE"
+            results.append(
+                {
+                    "name": "Baseline LogReg",
+                    "task": "fake",
+                    "prob_true": prob_true,
+                    "prob_fake": prob_fake,
+                    "fake_label": label,
+                    "fake_confidence": max(prob_true, prob_fake),
+                }
+            )
+        except Exception:
+            pass
+
+    # 3) Topic -> SVM pickles (topic_svm_*.pkl)
+    for model_path in sorted(base.rglob("topic_svm*_model.pkl")):
+        try:
+            vec_path = model_path.with_name(model_path.name.replace("_model.pkl", "_vectorizer.pkl"))
+            with open(model_path, "rb") as f:
+                svm = pickle.load(f)
+            with open(vec_path, "rb") as f:
+                vec = pickle.load(f)
+            clean = preprocess_for_theme(text, set(), pymorphy3.MorphAnalyzer(lang="uk"))
+            X = vec.transform([clean])
+            probs = None
+            if hasattr(svm, "predict_proba"):
+                probs = svm.predict_proba(X)[0]
+                classes = list(getattr(svm, "classes_", []))
+                idx = int(np.argmax(probs))
+                theme = classes[idx] if idx < len(classes) else str(idx)
+                results.append(
+                    {
+                        "name": _pretty_ckpt_name(model_path),
+                        "task": "topic",
+                        "theme": theme,
+                        "theme_confidence": float(probs[idx]),
+                        "theme_distribution": sorted([
+                            {"theme": cls, "probability": float(p)} for cls, p in zip(classes, probs)
+                        ], key=lambda x: x["probability"], reverse=True),
+                    }
+                )
+            else:
+                pred = svm.predict(X)[0]
+                results.append({"name": _pretty_ckpt_name(model_path), "task": "topic", "theme": str(pred), "theme_confidence": 1.0, "theme_distribution": []})
+        except Exception:
+            continue
+
+    # 4) BERT topic checkpoints
+    for ckpt in sorted(base.rglob("bert_topic*.pt")):
+        try:
+            out = _run_pt_checkpoint(ckpt, "topic")
+            results.append(out)
+        except Exception:
+            continue
+
+    return results
+
