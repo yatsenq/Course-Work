@@ -179,6 +179,48 @@ block content %}
 			<h2>Результат з'явиться після натискання кнопки.</h2>
 			<p>Встав текст і натисни «Провести аналіз».</p>
 		</article>
+		{% endif %} {% if result.per_model_results %}
+		<section class="card model-results-card">
+			<div class="section-heading compact">
+				<div>
+					<div class="eyebrow">Результати моделей</div>
+					<h2>Результати кожної моделі для цього аналізу</h2>
+				</div>
+				<p>Показано всі доступні моделі і їхні передбачення за цим текстом.</p>
+			</div>
+
+			<div class="table-wrap">
+				<table class="metrics-table">
+					<thead>
+						<tr>
+							<th>Модель</th>
+							<th>Завдання</th>
+							<th>Результат</th>
+							<th>Впевненість</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for m in result.per_model_results %}
+						<tr
+							class="{% if m.task == 'fake' and m.name == result.fake_label %}is-best{% endif %}"
+						>
+							<td>{{ m.name }}</td>
+							<td>{{ m.task }}</td>
+							<td>
+								{% if m.task == 'fake' %}{{ m.fake_label }}{% else %}{{ m.theme
+								}}{% endif %}
+							</td>
+							<td>
+								{% if m.task == 'fake' %}{{ '%.2f'|format(m.fake_confidence *
+								100) }}%{% else %}{{ '%.2f'|format(m.theme_confidence * 100)
+								}}%{% endif %}
+							</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</section>
 		{% endif %} {% if current_user.is_authenticated %}
 		<section class="card history-card short-history" id="history">
 			<div class="section-heading compact">
