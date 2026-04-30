@@ -1,23 +1,14 @@
-{% extends 'base.html' %} {% block title %}Вхід{% endblock %} {% block content
-%}
-<section class="auth-shell">
-	<div class="card auth-card">
-		<div class="eyebrow">Акаунт</div>
-		<h2>Вхід у систему</h2>
-		<p>Увійди в акаунт, щоб мати історію перевірок.</p>
-		<form method="post" class="auth-form">
-			<label>Email</label>
-			<input type="email" name="email" placeholder="you@example.com" required />
-
-			<label>Пароль</label>
-			<input type="password" name="password" placeholder="••••••••" required />
-
-			<button type="submit" class="btn btn-primary">Увійти</button>
-		</form>
-		<div class="auth-links">
-			<a href="{{ url_for('guest') }}">Увійти як гість</a>
-			<a href="{{ url_for('register') }}">Створити акаунт</a>
-		</div>
-	</div>
-</section>
+{% extends 'base.html' %}
+{% block title %}Вхід · News AI{% endblock %}
+{% block content %}
+<div class="c auth">
+<h2 style="font-size:16px;margin-bottom:4px">Вхід</h2>
+<p>Увійди для збереження історії перевірок.</p>
+<form method="post" class="auth-form">
+<label>Email</label><input type="email" name="email" placeholder="you@example.com" required>
+<label>Пароль</label><input type="password" name="password" placeholder="••••••••" required>
+<button type="submit" class="btn btn-p">Увійти</button>
+</form>
+<div class="auth-links"><a href="{{ url_for('guest') }}">Гість</a><a href="{{ url_for('register') }}">Створити акаунт</a></div>
+</div>
 {% endblock %}

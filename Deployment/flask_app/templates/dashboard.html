@@ -1,303 +1,134 @@
-{% extends 'base.html' %} {% block title %}Аналітична панель{% endblock %} {%
-block content %}
-<section class="hero hero-dashboard hero-single dashboard-hero">
-	<div class="hero-copy">
-		<div class="eyebrow">Аналіз</div>
-		<h1>Перевірка новини</h1>
-		<p>
-			Встав текст, отримай результат і за потреби завантаж PDF. {% if
-			current_user.is_authenticated %} Історія перевірок доступна прямо на цій
-			сторінці нижче. {% else %} У гостьовому режимі історія недоступна. {%
-			endif %}
-		</p>
-		<div class="hero-actions">
-			{% if current_user.is_authenticated %}
-			<a class="btn btn-secondary" href="#history">До історії</a>
-			{% else %}
-			<a class="btn btn-secondary" href="{{ url_for('login') }}">Історія</a>
-			{% endif %}
-		</div>
-	</div>
-</section>
+{% extends 'base.html' %}
+{% block title %}Аналіз · News AI{% endblock %}
+{% block content %}
 
-<section class="dashboard-layout dashboard-layout-single">
-	<div class="dashboard-main">
-		<article class="card editor-card">
-			<div class="section-heading compact">
-				<div>
-					<h2>Текст новини</h2>
-				</div>
-				<p>Власний текст або готовий приклад.</p>
-			</div>
-			<form method="post" class="analysis-form" id="analysisForm">
-				<label for="newsText">Введи текст</label>
-				<textarea
-					id="newsText"
-					name="news_text"
-					rows="10"
-					placeholder="Встав сюди новину..."
-				>
-{{ text }}</textarea
-				>
-				<div class="form-actions">
-					<button type="submit" class="btn btn-primary">Провести аналіз</button>
-					<button type="button" class="btn btn-secondary" id="clearTextButton">
-						Очистити
-					</button>
-				</div>
-			</form>
+{% if current_user.is_authenticated %}
+<div class="stats">
+<div class="stat-i"><strong>{{ stats.total if stats else 0 }}</strong><span>Перевірок</span></div>
+<div class="stat-i"><strong>{{ stats.true_count if stats else 0 }}</strong><span>TRUE</span></div>
+<div class="stat-i"><strong>{{ stats.fake_count if stats else 0 }}</strong><span>FAKE</span></div>
+<div class="stat-i"><strong>{{ stats.top_theme if stats else '—' }}</strong><span>Топ тема</span></div>
+</div>
+{% endif %}
 
-			<div class="example-section example-section-compact">
-				<h3>Швидкі приклади</h3>
-				<div class="example-grid example-grid-compact">
-					{% for example in examples %}
-					<button
-						type="button"
-						class="example-card"
-						data-example="{{ example.text|e }}"
-					>
-						<span>{{ example.title }}</span>
-						<small>Підставити</small>
-					</button>
-					{% endfor %}
-				</div>
-			</div>
-		</article>
+<div class="dash-grid">
+<div class="dash-left">
 
-		{% if result %}
-		<div class="insight-stack">
-			<article class="card result-card result-hero">
-				<div class="section-heading compact">
-					<div>
-						<h2>Результат</h2>
-					</div>
-					<p>Правдивість і впевненість.</p>
-				</div>
-				<div class="verdict-row">
-					<div>
-						<span class="status-label">Мітка</span>
-						<div
-							class="verdict-badge verdict-{{ 'true' if result.fake_label == 'TRUE' else 'fake' }}"
-						>
-							{{ result.fake_label }}
-						</div>
-					</div>
-					<div class="confidence-box">
-						<strong>{{ '%.2f'|format(result.fake_confidence * 100) }}%</strong>
-						<span>впевненість</span>
-					</div>
-				</div>
-				<div class="meter-group">
-					<div class="meter-row">
-						<div>
-							<span>TRUE</span>
-							<strong>{{ '%.2f'|format(result.prob_true * 100) }}%</strong>
-						</div>
-						<div class="meter">
-							<span style="width: {{ result.prob_true * 100 }}%"></span>
-						</div>
-					</div>
-					<div class="meter-row">
-						<div>
-							<span>FAKE</span>
-							<strong>{{ '%.2f'|format(result.prob_fake * 100) }}%</strong>
-						</div>
-						<div class="meter">
-							<span style="width: {{ result.prob_fake * 100 }}%"></span>
-						</div>
-					</div>
-				</div>
-				<form
-					method="post"
-					action="{{ url_for('download_report') }}"
-					class="report-actions"
-				>
-					<textarea name="analysis_json" hidden>{{ result | tojson }}</textarea>
-					<button type="submit" class="btn btn-secondary">
-						Завантажити PDF
-					</button>
-				</form>
-			</article>
+<div class="c">
+<h2 style="font-size:17px;margin-bottom:10px">Текст новини</h2>
+<form method="post" class="form-row" id="af">
+<textarea id="nt" name="news_text" placeholder="Встав сюди текст новини для аналізу…">{{ text }}</textarea>
+<div class="form-act">
+<button type="submit" class="btn btn-p" id="sb">Аналіз</button>
+<button type="button" class="btn btn-s" id="cb">Очистити</button>
+</div>
+</form>
+{% if examples %}
+<div class="ex-title">Приклади</div>
+<div class="ex-grid">
+{% for ex in examples %}
+<button type="button" class="ex-btn" data-ex="{{ ex.text|e }}"><strong>{{ ex.title }}</strong><small>Підставити</small></button>
+{% endfor %}
+</div>
+{% endif %}
+</div>
 
-			<article class="card result-card">
-				<div class="theme-panel">
-					<div>
-						<span class="status-label">Тема</span>
-						<div class="theme-badge">{{ result.theme }}</div>
-					</div>
-					<div class="confidence-box dark">
-						<strong>{{ '%.2f'|format(result.theme_confidence * 100) }}%</strong>
-						<span>впевненість</span>
-					</div>
-				</div>
+{% if current_user.is_authenticated %}
+<div class="c" id="history">
+<div class="hist-act">
+<h3 style="font-size:15px">Останні перевірки</h3>
+<div style="display:flex;gap:6px">
+<a class="btn btn-s btn-sm" href="{{ url_for('history') }}">Вся історія</a>
+<form method="post" action="{{ url_for('clear_history') }}" class="inline-form"><button type="submit" class="btn btn-d btn-sm">Очистити</button></form>
+</div>
+</div>
+{% if history_items %}
+<div class="hist-list">
+{% for item in history_items %}
+<div class="hist-i">
+<div class="hist-top"><div><strong>{{ item.fake_label }}</strong> <span style="color:var(--t3)">{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div>
+<div class="hist-badges"><span class="tag">{{ item.theme }}</span></div></div>
+<p>{{ item.input_text }}</p>
+</div>
+{% endfor %}
+</div>
+{% else %}<p style="color:var(--t3);font-size:13px">Немає перевірок</p>{% endif %}
+</div>
+{% endif %}
 
-				<div class="theme-details-controls">
-					<button
-						type="button"
-						class="btn btn-secondary btn-small toggle-theme-details"
-						aria-expanded="false"
-					>
-						Показати деталі теми
-					</button>
-				</div>
+</div>
+<div class="dash-right">
 
-				<div class="result-details hidden" id="themeDetailsPanel">
-					<div class="theme-distribution">
-						{% for item in result.theme_distribution %}
-						<div class="theme-row">
-							<div class="theme-row-top">
-								<span>{{ item.theme }}</span>
-								<strong>{{ '%.2f'|format(item.probability * 100) }}%</strong>
-							</div>
-							<div class="meter">
-								<span style="width: {{ item.probability * 100 }}%"></span>
-							</div>
-						</div>
-						{% endfor %}
-					</div>
-					<div class="marker-box">
-						<h3>Ключові слова</h3>
-						{% if result.theme_markers %}
-						<div class="marker-cloud">
-							{% for marker in result.theme_markers %}
-							<span class="marker-chip"
-								>{{ marker.keyword }}
-								<small>{{ '%.3f'|format(marker.score) }}</small></span
-							>
-							{% endfor %}
-						</div>
-						{% else %}
-						<p>Для цієї теми маркери не вдалося витягнути.</p>
-						{% endif %}
-					</div>
-				</div>
-			</article>
-		</div>
-		{% else %}
-		<article class="card placeholder-card">
-			<div class="eyebrow">Готово до аналізу</div>
-			<h2>Результат з'явиться після натискання кнопки.</h2>
-			<p>Встав текст і натисни «Провести аналіз».</p>
-		</article>
-		{% endif %} {% if result.per_model_results %}
-		<section class="card model-results-card">
-			<div class="section-heading compact">
-				<div>
-					<div class="eyebrow">Результати моделей</div>
-					<h2>Результати кожної моделі для цього аналізу</h2>
-				</div>
-				<p>Показано всі доступні моделі і їхні передбачення за цим текстом.</p>
-			</div>
+{% if result %}
+<div class="res-stack">
+<div class="c res-card anim-in">
+<div class="v-row">
+<div><div class="vb vb-{{ 't' if result.fake_label == 'TRUE' else 'f' }}">{{ result.fake_label }}</div></div>
+<div class="cf"><strong>{{ '%.1f'|format(result.fake_confidence * 100) }}%</strong><span>впевненість</span></div>
+</div>
+<div class="meter-g">
+<div class="mr"><div class="mr-top"><span>TRUE</span><strong>{{ '%.1f'|format(result.prob_true * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_true * 100 }}%"></span></div></div>
+<div class="mr"><div class="mr-top"><span>FAKE</span><strong>{{ '%.1f'|format(result.prob_fake * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_fake * 100 }}%"></span></div></div>
+</div>
+<form method="post" action="{{ url_for('download_report') }}">
+<input type="hidden" name="analysis_json" value="{{ result | tojson | e }}">
+<button type="submit" class="btn btn-s btn-sm">📄 Завантажити PDF</button>
+</form>
+</div>
 
-			<div class="table-wrap">
-				<table class="metrics-table">
-					<thead>
-						<tr>
-							<th>Модель</th>
-							<th>Завдання</th>
-							<th>Результат</th>
-							<th>Впевненість</th>
-						</tr>
-					</thead>
-					<tbody>
-						{% for m in result.per_model_results %}
-						<tr
-							class="{% if m.task == 'fake' and m.name == result.fake_label %}is-best{% endif %}"
-						>
-							<td>{{ m.name }}</td>
-							<td>{{ m.task }}</td>
-							<td>
-								{% if m.task == 'fake' %}{{ m.fake_label }}{% else %}{{ m.theme
-								}}{% endif %}
-							</td>
-							<td>
-								{% if m.task == 'fake' %}{{ '%.2f'|format(m.fake_confidence *
-								100) }}%{% else %}{{ '%.2f'|format(m.theme_confidence * 100)
-								}}%{% endif %}
-							</td>
-						</tr>
-						{% endfor %}
-					</tbody>
-				</table>
-			</div>
-		</section>
-		{% endif %} {% if current_user.is_authenticated %}
-		<section class="card history-card short-history" id="history">
-			<div class="section-heading compact">
-				<div>
-					<div class="eyebrow">Історія в аналізі</div>
-					<h2>Останні 5 перевірок</h2>
-				</div>
-				<form
-					method="post"
-					action="{{ url_for('clear_history') }}"
-					class="inline-form"
-				>
-					<button type="submit" class="btn btn-secondary">
-						Очистити історію
-					</button>
-				</form>
-			</div>
+<div class="c res-card anim-in">
+<div class="v-row">
+<div class="tb">{{ result.theme }}</div>
+<div class="cf"><strong>{{ '%.1f'|format(result.theme_confidence * 100) }}%</strong><span>тема</span></div>
+</div>
+<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt">Деталі теми</button>
+<div class="detail-box hidden" id="dp">
+<div class="meter-g" style="margin-bottom:10px">
+{% for item in result.theme_distribution %}
+<div class="mr"><div class="mr-top"><span>{{ item.theme }}</span><strong>{{ '%.1f'|format(item.probability * 100) }}%</strong></div><div class="meter"><span style="width:{{ item.probability * 100 }}%"></span></div></div>
+{% endfor %}
+</div>
+{% if result.theme_markers %}
+<div style="font-size:13px;font-weight:600;margin-bottom:6px">Маркери</div>
+<div class="mk-cloud">{% for m in result.theme_markers %}<span class="mk">{{ m.keyword }}<small>{{ '%.3f'|format(m.score) }}</small></span>{% endfor %}</div>
+{% endif %}
+</div>
+</div>
+</div>
 
-			{% if history_items %}
-			<div class="history-list history-list-compact history-list-short">
-				{% for item in history_items %}
-				<article class="history-item history-item-compact">
-					<div class="history-item-head">
-						<div>
-							<strong>{{ item.fake_label }}</strong>
-							<span>{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
-						</div>
-					</div>
-					<div class="history-badges">
-						<span class="chip">{{ item.theme }}</span>
-					</div>
-					<p>{{ item.input_text }}</p>
-				</article>
-				{% endfor %}
-			</div>
-			{% else %}
-			<p class="empty-state">Ще немає збережених перевірок.</p>
-			{% endif %}
-		</section>
-		{% endif %}
-	</div>
-</section>
+{% if result.per_model_results %}
+<div class="c anim-in">
+<h3 style="font-size:15px;margin-bottom:10px">Результати моделей</h3>
+<div class="tw"><table>
+<thead><tr><th>Модель</th><th>Завдання</th><th>Результат</th><th>Впевненість</th></tr></thead>
+<tbody>
+{% for m in result.per_model_results %}
+<tr class="row-{{ 't' if (m.task == 'fake' and m.fake_label == 'TRUE') else 'f' }}">
+<td>{{ m.name }}</td><td>{{ m.task }}</td>
+<td>{% if m.task == 'fake' %}{{ m.fake_label }}{% else %}{{ m.theme }}{% endif %}</td>
+<td>{% if m.task == 'fake' %}{{ '%.1f'|format(m.fake_confidence * 100) }}%{% else %}{{ '%.1f'|format(m.theme_confidence * 100) }}%{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="c ph"><strong>Результат з'явиться тут</strong>Введіть текст новини та натисніть «Аналіз»</div>
+{% endif %}
+
+</div>
+</div>
+
+<div class="ov" id="ov"><div class="sp"></div><p>Аналізуємо…</p></div>
 
 <script>
-	document.addEventListener('DOMContentLoaded', () => {
-		const textarea = document.getElementById('newsText')
-		const clearButton = document.getElementById('clearTextButton')
-		const exampleButtons = document.querySelectorAll('[data-example]')
-		const toggleThemeDetailsButton = document.querySelector(
-			'.toggle-theme-details',
-		)
-		const themeDetailsPanel = document.getElementById('themeDetailsPanel')
-
-		exampleButtons.forEach(button => {
-			button.addEventListener('click', () => {
-				textarea.value = button.dataset.example || ''
-				textarea.focus()
-			})
-		})
-
-		clearButton.addEventListener('click', () => {
-			textarea.value = ''
-			textarea.focus()
-		})
-
-		if (toggleThemeDetailsButton && themeDetailsPanel) {
-			toggleThemeDetailsButton.addEventListener('click', () => {
-				const isHidden = themeDetailsPanel.classList.toggle('hidden')
-				toggleThemeDetailsButton.textContent = isHidden
-					? 'Показати деталі теми'
-					: 'Сховати деталі теми'
-				toggleThemeDetailsButton.setAttribute(
-					'aria-expanded',
-					String(!isHidden),
-				)
-			})
-		}
-	})
+document.addEventListener('DOMContentLoaded',()=>{
+const ta=document.getElementById('nt'),f=document.getElementById('af'),ov=document.getElementById('ov');
+document.getElementById('cb')?.addEventListener('click',()=>{ta.value='';ta.focus()});
+document.querySelectorAll('[data-ex]').forEach(b=>b.addEventListener('click',()=>{ta.value=b.dataset.ex;ta.focus()}));
+document.getElementById('dt')?.addEventListener('click',function(){
+const d=document.getElementById('dp');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Деталі теми':'Сховати'});
+f?.addEventListener('submit',()=>{if(ta.value.trim())ov.classList.add('on')});
+});
 </script>
 {% endblock %}

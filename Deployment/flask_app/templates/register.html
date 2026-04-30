@@ -1,32 +1,15 @@
-{% extends 'base.html' %} {% block title %}Реєстрація{% endblock %} {% block
-content %}
-<section class="auth-shell">
-	<div class="card auth-card">
-		<div class="eyebrow">Реєстрація</div>
-		<h2>Створити акаунт</h2>
-		<p>Після входу історія перевірок буде зберігатися автоматично.</p>
-		<form method="post" class="auth-form">
-			<label>Ім'я користувача</label>
-			<input type="text" name="username" placeholder="Ваше ім'я" required />
-
-			<label>Email</label>
-			<input type="email" name="email" placeholder="you@example.com" required />
-
-			<label>Пароль</label>
-			<input
-				type="password"
-				name="password"
-				minlength="6"
-				placeholder="Не менше 6 символів"
-				required
-			/>
-
-			<button type="submit" class="btn btn-primary">Зареєструватися</button>
-		</form>
-		<div class="auth-links">
-			<a href="{{ url_for('guest') }}">Продовжити як гість</a>
-			<a href="{{ url_for('login') }}">Вже є акаунт?</a>
-		</div>
-	</div>
-</section>
+{% extends 'base.html' %}
+{% block title %}Реєстрація · News AI{% endblock %}
+{% block content %}
+<div class="c auth">
+<h2 style="font-size:16px;margin-bottom:4px">Реєстрація</h2>
+<p>Створи акаунт для збереження перевірок.</p>
+<form method="post" class="auth-form">
+<label>Ім'я</label><input type="text" name="username" placeholder="Ваше ім'я" required>
+<label>Email</label><input type="email" name="email" placeholder="you@example.com" required>
+<label>Пароль</label><input type="password" name="password" minlength="6" placeholder="Мін. 6 символів" required>
+<button type="submit" class="btn btn-p">Зареєструватися</button>
+</form>
+<div class="auth-links"><a href="{{ url_for('guest') }}">Гість</a><a href="{{ url_for('login') }}">Є акаунт?</a></div>
+</div>
 {% endblock %}
