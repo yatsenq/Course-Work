@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import io
 import json
 import os
@@ -24,7 +25,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from ml_service import load_all_models, predict_news_bundle
+import ml_service
 
 
 def normalize_database_url(raw_url: str) -> str:
@@ -201,6 +202,124 @@ def save_history_item(user_id: int, text: str, result: dict) -> None:
     db.session.commit()
 
 
+def _pretty_model_name(model_name: str) -> str:
+    return model_name.replace("_", " ").strip()
+
+
+def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
+    if not csv_path.exists():
+        return []
+
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _float_value(raw_value: object) -> float:
+    try:
+        if raw_value in {None, ""}:
+            return 0.0
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _format_percent(value: float) -> str:
+    return f"{value * 100:.2f}%"
+
+
+@lru_cache(maxsize=1)
+def load_model_comparison_metrics() -> dict[str, dict[str, object]]:
+    results_dir = Path(MODEL_BASE_DIR) / "experiments" / "results"
+
+    fake_rows: list[dict[str, object]] = []
+    baseline_path = results_dir / "01_baseline_fake_metrics.json"
+    if baseline_path.exists():
+        baseline_payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+        baseline_metrics = baseline_payload.get("metrics", {})
+        fake_rows.append(
+            {
+                "model": _pretty_model_name(str(baseline_payload.get("model_name", "Baseline_LogReg"))),
+                "accuracy": _float_value(baseline_metrics.get("accuracy")),
+                "precision": _float_value(baseline_metrics.get("precision")),
+                "recall": _float_value(baseline_metrics.get("recall")),
+                "f1": _float_value(baseline_metrics.get("f1")),
+                "roc_auc": _float_value(baseline_metrics.get("roc_auc")),
+            }
+        )
+
+    for row in _read_csv_rows(results_dir / "08_fake_detection_summary.csv"):
+        fake_rows.append(
+            {
+                "model": _pretty_model_name(row.get("", "")),
+                "accuracy": _float_value(row.get("Accuracy")),
+                "precision": _float_value(row.get("Precision")),
+                "recall": _float_value(row.get("Recall")),
+                "f1": _float_value(row.get("F1-Score")),
+                "roc_auc": _float_value(row.get("ROC-AUC")),
+            }
+        )
+
+    best_fake = max(fake_rows, key=lambda item: (item["f1"], item["roc_auc"])) if fake_rows else None
+    fake_detection = {
+        "title": "Fake detection",
+        "models_compared": len(fake_rows),
+        "best_overall": best_fake["model"] if best_fake else "—",
+        "best_metric_label": "F1",
+        "best_metric_value": _format_percent(float(best_fake["f1"])) if best_fake else "—",
+        "best_secondary_label": "ROC-AUC",
+        "best_secondary_value": _format_percent(float(best_fake["roc_auc"])) if best_fake else "—",
+        "rows": [
+            {
+                "model": row["model"],
+                "accuracy": _format_percent(float(row["accuracy"])),
+                "precision": _format_percent(float(row["precision"])),
+                "recall": _format_percent(float(row["recall"])),
+                "f1": _format_percent(float(row["f1"])),
+                "roc_auc": _format_percent(float(row["roc_auc"])),
+                "is_best": bool(best_fake and row["model"] == best_fake["model"]),
+            }
+            for row in fake_rows
+        ],
+    }
+
+    topic_rows: list[dict[str, object]] = []
+    for row in _read_csv_rows(results_dir / "08_topic_classification_summary.csv"):
+        topic_rows.append(
+            {
+                "model": _pretty_model_name(row.get("", "")),
+                "accuracy": _float_value(row.get("Accuracy")),
+                "macro_f1": _float_value(row.get("Macro-F1")),
+                "weighted_f1": _float_value(row.get("Weighted-F1")),
+            }
+        )
+
+    best_topic = max(topic_rows, key=lambda item: (item["macro_f1"], item["accuracy"])) if topic_rows else None
+    topic_classification = {
+        "title": "Topic classification",
+        "models_compared": len(topic_rows),
+        "best_overall": best_topic["model"] if best_topic else "—",
+        "best_metric_label": "Macro-F1",
+        "best_metric_value": _format_percent(float(best_topic["macro_f1"])) if best_topic else "—",
+        "best_secondary_label": "Accuracy",
+        "best_secondary_value": _format_percent(float(best_topic["accuracy"])) if best_topic else "—",
+        "rows": [
+            {
+                "model": row["model"],
+                "accuracy": _format_percent(float(row["accuracy"])),
+                "macro_f1": _format_percent(float(row["macro_f1"])),
+                "weighted_f1": _format_percent(float(row["weighted_f1"])),
+                "is_best": bool(best_topic and row["model"] == best_topic["model"]),
+            }
+            for row in topic_rows
+        ],
+    }
+
+    return {
+        "fake_detection": fake_detection,
+        "topic_classification": topic_classification,
+    }
+
+
 def get_history_items(limit: int | None = 12):
     if not current_user.is_authenticated:
         return []
@@ -213,6 +332,7 @@ def get_history_items(limit: int | None = 12):
 
 def build_pdf_buffer(payload: dict) -> io.BytesIO:
     body_font, bold_font = get_pdf_fonts()
+    model_metrics = load_model_comparison_metrics()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -334,6 +454,59 @@ def build_pdf_buffer(payload: dict) -> io.BytesIO:
     else:
         story.append(para("Для цієї теми маркери не вдалося витягнути з моделі.", small_style))
 
+    def append_model_table(title: str, summary: dict[str, object], rows: list[dict[str, object]], headers: list[str], keys: list[str]) -> None:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(title, section_style))
+        story.append(
+            para(
+                f"Моделей: {summary['models_compared']}. Найкраща: {summary['best_overall']} ({summary['best_metric_label']}: {summary['best_metric_value']}, {summary['best_secondary_label']}: {summary['best_secondary_value']}).",
+                small_style,
+            )
+        )
+
+        table_data = [headers]
+        best_row_index: int | None = None
+        for index, row in enumerate(rows, start=1):
+            table_data.append([row.get(key, "") for key in keys])
+            if row.get("is_best"):
+                best_row_index = index
+
+        table = Table(table_data, colWidths=[40 * mm] + [25 * mm] * (len(headers) - 1))
+        table_style = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d1fae5")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#064e3b")),
+            ("FONTNAME", (0, 0), (-1, 0), bold_font),
+            ("FONTNAME", (0, 1), (-1, -1), body_font),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("LEADING", (0, 0), (-1, -1), 11),
+        ]
+        if best_row_index is not None:
+            table_style.extend(
+                [
+                    ("BACKGROUND", (0, best_row_index), (-1, best_row_index), colors.HexColor("#eff6ff")),
+                    ("FONTNAME", (0, best_row_index), (-1, best_row_index), bold_font),
+                ]
+            )
+        table.setStyle(TableStyle(table_style))
+        story.append(table)
+
+    append_model_table(
+        "Порівняння моделей fake detection",
+        model_metrics["fake_detection"],
+        model_metrics["fake_detection"]["rows"],
+        ["Модель", "Accuracy", "Precision", "Recall", "F1", "ROC-AUC"],
+        ["model", "accuracy", "precision", "recall", "f1", "roc_auc"],
+    )
+
+    append_model_table(
+        "Порівняння моделей topic classification",
+        model_metrics["topic_classification"],
+        model_metrics["topic_classification"]["rows"],
+        ["Модель", "Accuracy", "Macro-F1", "Weighted-F1"],
+        ["model", "accuracy", "macro_f1", "weighted_f1"],
+    )
+
     doc.build(story)
     buffer.seek(0)
     return buffer
@@ -344,6 +517,7 @@ def inject_globals():
     return {
         "examples": EXAMPLE_NEWS,
         "guest_mode": session.get("guest_mode", False) and not current_user.is_authenticated,
+        "model_metrics": load_model_comparison_metrics(),
     }
 
 
@@ -361,7 +535,7 @@ def ensure_model_preload() -> None:
 
     def _load() -> None:
         try:
-            load_all_models(MODEL_BASE_DIR)
+            ml_service.load_all_models(MODEL_BASE_DIR)
         except Exception:
             # If preload fails, regular request path will still retry and show user-facing error.
             pass
@@ -473,8 +647,39 @@ def dashboard():
             flash("Введіть текст новини.", "error")
         else:
             try:
-                result = predict_news_bundle(text, MODEL_BASE_DIR)
+                per_model_results = ml_service.predict_all_models(text, MODEL_BASE_DIR)
+
+                # choose best fake prediction by confidence for saving/display
+                fake_results = [m for m in per_model_results if m.get("task") == "fake"]
+                topic_results = [m for m in per_model_results if m.get("task") == "topic"]
+
+                best_fake = max(fake_results, key=lambda x: x.get("fake_confidence", 0), default=None)
+                best_topic = max(topic_results, key=lambda x: x.get("theme_confidence", 0), default=None)
+
+                result = {}
+                if best_fake:
+                    result["fake_label"] = best_fake.get("fake_label", "—")
+                    result["fake_confidence"] = best_fake.get("fake_confidence", 0.0)
+                    result["prob_true"] = best_fake.get("prob_true", 0.0)
+                    result["prob_fake"] = best_fake.get("prob_fake", 0.0)
+                if best_topic:
+                    result["theme"] = best_topic.get("theme", "—")
+                    result["theme_confidence"] = best_topic.get("theme_confidence", 0.0)
+                    result["theme_distribution"] = best_topic.get("theme_distribution", [])
+
+                # attempt to build theme markers using loaded resources
+                try:
+                    resources = ml_service.load_all_models(MODEL_BASE_DIR)
+                    clean_text = ml_service.preprocess_for_theme(text, resources.get("stopwords", set()), resources.get("morph"))
+                    theme_vector = resources["theme_vectorizer"].transform([clean_text])
+                    markers = ml_service._build_theme_markers(resources["theme_model"], resources["theme_vectorizer"], result.get("theme", ""), theme_vector)
+                    result["theme_markers"] = markers
+                except Exception:
+                    result["theme_markers"] = []
+
                 result["input_text"] = text
+                result["per_model_results"] = per_model_results
+
                 if current_user.is_authenticated:
                     save_history_item(current_user.id, text, result)
                 flash("Аналіз виконано.", "success")
