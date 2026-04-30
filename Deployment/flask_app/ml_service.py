@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 import os
 import pickle
+import joblib
 import re
 import threading
 
@@ -97,10 +98,9 @@ _MODEL_RESOURCES_CACHE: dict[str, dict[str, Any]] = {}
 
 def _load_checkpoint(path: Path, device: torch.device):
     try:
-        return torch.load(path, map_location=device, weights_only=True)
+        return torch.load(path, map_location=device, weights_only=False)
     except TypeError:
-        return torch.load(path, map_location=device)
-    except Exception:
+        # older PyTorch without weights_only param
         return torch.load(path, map_location=device)
 
 
@@ -590,7 +590,8 @@ def predict_all_models(text: str, model_base_dir: str) -> list[dict[str, Any]]:
                 svm = pickle.load(f)
             with open(vec_path, "rb") as f:
                 vec = pickle.load(f)
-            clean = preprocess_for_theme(text, set(), pymorphy3.MorphAnalyzer(lang="uk"))
+            _morph = pymorphy3.MorphAnalyzer(lang="uk")
+            clean = preprocess_for_theme(text, set(), _morph)
             X = vec.transform([clean])
             probs = None
             if hasattr(svm, "predict_proba"):
@@ -625,3 +626,235 @@ def predict_all_models(text: str, model_base_dir: str) -> list[dict[str, Any]]:
 
     return results
 
+
+# ---------------------------------------------------------------------------
+#  Optimised selected-models inference (4 models instead of ~10)
+# ---------------------------------------------------------------------------
+_SELECTED_MODELS_CACHE: dict[str, Any] = {}
+_SELECTED_MODELS_LOCK = threading.Lock()
+
+
+def load_selected_models(model_base_dir: str) -> dict[str, Any]:
+    """Load only the 4 selected models for production inference."""
+    cache_key = str(Path(model_base_dir).resolve())
+    cached = _SELECTED_MODELS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    with _SELECTED_MODELS_LOCK:
+        cached = _SELECTED_MODELS_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        base = Path(model_base_dir)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        exp = base / "experiments" / "models"
+
+        # --- tokenizer --------------------------------------------------------
+        tok_path = exp / "bert_tokenizer"
+        if not tok_path.exists():
+            tok_path = exp / "07" / "bert_tokenizer"
+        tokenizer = BertTokenizerFast.from_pretrained(tok_path)
+
+        # --- 1. Baseline LogReg (fake) — optional -----------------------------
+        logreg_model = logreg_vec = None
+        try:
+            logreg_model = joblib.load(exp / "01" / "baseline_logreg_model.pkl")
+            logreg_vec = joblib.load(exp / "01" / "baseline_logreg_vectorizer.pkl")
+        except Exception:
+            logreg_model = logreg_vec = None
+
+        # --- 2. BERT HeadC (fake) ---------------------------------------------
+        bert_fake = None
+        fake_max_len = 256
+        try:
+            fake_ckpt = _load_checkpoint(exp / "02" / "bert_fake_headc_best.pt", device)
+            fake_backbone = _backbone_name(fake_ckpt)
+            fake_max_len = int(fake_ckpt.get("max_len", 256))
+            fake_nc = int(fake_ckpt.get("num_classes", 2))
+            bert_fake = BertClassifierHeadC(fake_backbone, num_classes=fake_nc).to(device)
+            bert_fake.load_state_dict(fake_ckpt.get("model_state_dict", fake_ckpt))
+            bert_fake.eval()
+        except Exception:
+            bert_fake = None
+
+        # --- 3. SVM expB (topic) — optional -----------------------------------
+        svm_model = svm_vec = None
+        try:
+            with open(exp / "05" / "topic_svm_expB_model.pkl", "rb") as f:
+                svm_model = pickle.load(f)
+            with open(exp / "05" / "topic_svm_expB_vectorizer.pkl", "rb") as f:
+                svm_vec = pickle.load(f)
+        except Exception:
+            svm_model = svm_vec = None
+
+        # --- 4. BERT topic expB -----------------------------------------------
+        bert_topic = None
+        topic_max_len = 256
+        topic_le = None
+        try:
+            topic_ckpt = _load_checkpoint(
+                exp / "07" / "bert_topic_expb_detector_best.pt", device,
+            )
+            topic_backbone = _backbone_name(topic_ckpt)
+            topic_max_len = int(topic_ckpt.get("max_len", 256))
+            topic_nc = int(topic_ckpt.get("num_classes", 2))
+            topic_ht = _checkpoint_head_type(
+                exp / "07" / "bert_topic_expb_detector_best.pt",
+                topic_ckpt,
+                topic_ckpt.get("model_state_dict", topic_ckpt),
+            )
+            topic_cls = HEAD_CLASSES.get(topic_ht, BertClassifierHeadC)
+            bert_topic = topic_cls(topic_backbone, num_classes=topic_nc).to(device)
+            bert_topic.load_state_dict(topic_ckpt.get("model_state_dict", topic_ckpt))
+            bert_topic.eval()
+        except Exception:
+            bert_topic = None
+
+        try:
+            with open(exp / "07" / "label_encoder.pkl", "rb") as f:
+                topic_le = pickle.load(f)
+        except Exception:
+            topic_le = None
+
+        # --- shared helpers ---------------------------------------------------
+        stopwords_path = base / "Models" / "stopwords_ua.txt"
+        with open(stopwords_path, "r", encoding="utf-8") as f:
+            stopwords = set(f.read().split())
+        morph = pymorphy3.MorphAnalyzer(lang="uk")
+
+        with open(base / "Models" / "THEME" / "theme_vectorizer.pkl", "rb") as f:
+            theme_vectorizer = pickle.load(f)
+        with open(base / "Models" / "THEME" / "theme_model.pkl", "rb") as f:
+            theme_model = pickle.load(f)
+
+        resources = {
+            "device": device, "tokenizer": tokenizer,
+            "logreg_model": logreg_model, "logreg_vec": logreg_vec,
+            "bert_fake": bert_fake, "bert_fake_max_len": fake_max_len,
+            "svm_model": svm_model, "svm_vec": svm_vec,
+            "bert_topic": bert_topic, "bert_topic_max_len": topic_max_len,
+            "topic_le": topic_le,
+            "stopwords": stopwords, "morph": morph,
+            "theme_vectorizer": theme_vectorizer, "theme_model": theme_model,
+        }
+        _SELECTED_MODELS_CACHE[cache_key] = resources
+        return resources
+
+
+def predict_selected_models(text: str, model_base_dir: str) -> dict[str, Any]:
+    """Run the 4 selected models and return a combined result dict."""
+    res = load_selected_models(model_base_dir)
+    device, tok = res["device"], res["tokenizer"]
+    per_model: list[dict[str, Any]] = []
+
+    # 1. LogReg fake
+    try:
+        X = res["logreg_vec"].transform([text])
+        lr = res["logreg_model"]
+        if hasattr(lr, "predict_proba"):
+            proba = lr.predict_proba(X)[0]
+        else:
+            pred = lr.predict(X)[0]
+            cl = getattr(lr, "classes_", [0, 1])
+            proba = [0.0, 1.0] if pred == cl[-1] else [1.0, 0.0]
+        pt = float(proba[1]) if len(proba) > 1 else float(proba[0])
+        pf = float(proba[0]) if len(proba) > 1 else 1.0 - pt
+        per_model.append({"name": "Baseline LogReg", "task": "fake",
+                          "prob_true": pt, "prob_fake": pf,
+                          "fake_label": "TRUE" if pt >= pf else "FAKE",
+                          "fake_confidence": max(pt, pf)})
+    except Exception:
+        pass
+
+    # 2. BERT HeadC fake
+    try:
+        enc = tok(text, max_length=res["bert_fake_max_len"],
+                  padding="max_length", truncation=True, return_tensors="pt")
+        with torch.no_grad():
+            logits = res["bert_fake"](enc["input_ids"].to(device),
+                                     enc["attention_mask"].to(device))
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+        pt = float(probs[1]) if len(probs) > 1 else float(probs[0])
+        pf = float(probs[0]) if len(probs) > 1 else 1.0 - pt
+        per_model.append({"name": "BERT Head C (AttPool)", "task": "fake",
+                          "prob_true": pt, "prob_fake": pf,
+                          "fake_label": "TRUE" if pt >= pf else "FAKE",
+                          "fake_confidence": max(pt, pf)})
+    except Exception:
+        pass
+
+    # 3. SVM expB topic
+    try:
+        clean = preprocess_for_theme(text, res["stopwords"], res["morph"])
+        X = res["svm_vec"].transform([clean])
+        svm = res["svm_model"]
+        if hasattr(svm, "predict_proba"):
+            probs = svm.predict_proba(X)[0]
+            classes = list(getattr(svm, "classes_", []))
+            idx = int(np.argmax(probs))
+            theme = classes[idx] if idx < len(classes) else str(idx)
+            per_model.append({"name": "SVM Exp-B", "task": "topic",
+                              "theme": theme,
+                              "theme_confidence": float(probs[idx]),
+                              "theme_distribution": sorted(
+                                  [{"theme": c, "probability": float(p)}
+                                   for c, p in zip(classes, probs)],
+                                  key=lambda x: x["probability"], reverse=True)})
+        else:
+            pred = svm.predict(X)[0]
+            per_model.append({"name": "SVM Exp-B", "task": "topic",
+                              "theme": str(pred), "theme_confidence": 1.0,
+                              "theme_distribution": []})
+    except Exception:
+        pass
+
+    # 4. BERT topic expB
+    try:
+        enc = tok(text, max_length=res["bert_topic_max_len"],
+                  padding="max_length", truncation=True, return_tensors="pt")
+        with torch.no_grad():
+            logits = res["bert_topic"](enc["input_ids"].to(device),
+                                      enc["attention_mask"].to(device))
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+        classes = list(getattr(res["topic_le"], "classes_", []))
+        if not classes:
+            classes = [str(i) for i in range(len(probs))]
+        idx = int(np.argmax(probs))
+        theme = classes[idx] if idx < len(classes) else str(idx)
+        per_model.append({"name": "BERT Topic Exp-B", "task": "topic",
+                          "theme": theme,
+                          "theme_confidence": float(probs[idx]),
+                          "theme_distribution": sorted(
+                              [{"theme": c, "probability": float(p)}
+                               for c, p in zip(classes, probs)],
+                              key=lambda x: x["probability"], reverse=True)})
+    except Exception:
+        pass
+
+    # --- build combined result ------------------------------------------------
+    fake_r = [m for m in per_model if m["task"] == "fake"]
+    topic_r = [m for m in per_model if m["task"] == "topic"]
+    best_f = max(fake_r, key=lambda x: x["fake_confidence"], default=None)
+    best_t = max(topic_r, key=lambda x: x["theme_confidence"], default=None)
+
+    result: dict[str, Any] = {}
+    if best_f:
+        result.update({k: best_f[k] for k in
+                       ("fake_label", "fake_confidence", "prob_true", "prob_fake")})
+    if best_t:
+        result.update({k: best_t[k] for k in
+                       ("theme", "theme_confidence", "theme_distribution")})
+
+    try:
+        clean_text = preprocess_for_theme(text, res["stopwords"], res["morph"])
+        tv = res["theme_vectorizer"].transform([clean_text])
+        result["theme_markers"] = _build_theme_markers(
+            res["theme_model"], res["theme_vectorizer"],
+            result.get("theme", ""), tv)
+    except Exception:
+        result["theme_markers"] = []
+
+    result["input_text"] = text
+    result["per_model_results"] = per_model
+    return result
