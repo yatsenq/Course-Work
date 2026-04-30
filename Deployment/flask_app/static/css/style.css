@@ -744,6 +744,122 @@ textarea {
 	background: var(--accent-2);
 }
 
+.model-metrics-card {
+	display: grid;
+	gap: 18px;
+}
+
+.metrics-overview {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+}
+
+.metric-summary-card {
+	display: grid;
+	gap: 8px;
+	padding: 18px;
+	border-radius: var(--radius-md);
+	background: linear-gradient(
+		180deg,
+		rgba(15, 23, 42, 0.04),
+		rgba(15, 23, 42, 0.02)
+	);
+	border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.metric-summary-card.accent {
+	background: linear-gradient(
+		180deg,
+		rgba(17, 68, 136, 0.09),
+		rgba(17, 68, 136, 0.04)
+	);
+	border-color: rgba(17, 68, 136, 0.14);
+}
+
+.metric-summary-card span,
+.metric-table-head p {
+	color: var(--muted);
+	font-size: 0.9rem;
+}
+
+.metric-summary-card strong {
+	font-size: 1.4rem;
+	font-weight: 800;
+	color: var(--text);
+}
+
+.metric-summary-card p {
+	margin: 0;
+	color: var(--text);
+	line-height: 1.5;
+}
+
+.metrics-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+}
+
+.metric-table-card {
+	display: grid;
+	gap: 12px;
+	padding: 18px;
+	border-radius: var(--radius-md);
+	background: #ffffff;
+	border: 1px solid rgba(15, 23, 42, 0.08);
+	box-shadow: 0 18px 40px rgba(15, 23, 42, 0.05);
+}
+
+.metric-table-head h3 {
+	margin: 0;
+	font-size: 1.02rem;
+	font-weight: 800;
+}
+
+.metric-table-head p {
+	margin: 2px 0 0;
+}
+
+.table-wrap {
+	overflow-x: auto;
+}
+
+.metrics-table {
+	width: 100%;
+	border-collapse: collapse;
+	min-width: 620px;
+	font-size: 0.92rem;
+}
+
+.metrics-table th,
+.metrics-table td {
+	padding: 10px 12px;
+	text-align: left;
+	border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+	white-space: nowrap;
+}
+
+.metrics-table th {
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	font-weight: 800;
+}
+
+.metrics-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.metrics-table tbody tr.is-best {
+	background: rgba(17, 68, 136, 0.07);
+}
+
+.metrics-table tbody tr.is-best td:first-child {
+	font-weight: 800;
+}
+
 .marker-cloud {
 	display: flex;
 	flex-wrap: wrap;
@@ -900,6 +1016,11 @@ textarea {
 	.history-list {
 		grid-template-columns: 1fr;
 	}
+
+	.metrics-overview,
+	.metrics-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 @media (max-width: 720px) {
@@ -939,6 +1060,10 @@ textarea {
 	.verdict-row,
 	.theme-panel {
 		align-items: flex-start;
+	}
+
+	.metrics-table {
+		min-width: 560px;
 	}
 
 	textarea {
