@@ -71,7 +71,7 @@
 <div class="mr"><div class="mr-top"><span>FAKE</span><strong>{{ '%.1f'|format(result.prob_fake * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_fake * 100 }}%"></span></div></div>
 </div>
 <form method="post" action="{{ url_for('download_report') }}">
-<input type="hidden" name="analysis_json" value="{{ result | tojson | e }}">
+<input type="hidden" name="analysis_json" value="{{ result | tojson | forceescape }}">
 <button type="submit" class="btn btn-s btn-sm">📄 Завантажити PDF</button>
 </form>
 </div>
