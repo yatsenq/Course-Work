@@ -2,15 +2,6 @@
 {% block title %}Аналіз · News AI{% endblock %}
 {% block content %}
 
-{% if current_user.is_authenticated %}
-<div class="stats">
-<div class="stat-i"><strong>{{ stats.total if stats else 0 }}</strong><span>Перевірок</span></div>
-<div class="stat-i"><strong>{{ stats.true_count if stats else 0 }}</strong><span>TRUE</span></div>
-<div class="stat-i"><strong>{{ stats.fake_count if stats else 0 }}</strong><span>FAKE</span></div>
-<div class="stat-i"><strong>{{ stats.top_theme if stats else '—' }}</strong><span>Топ тема</span></div>
-</div>
-{% endif %}
-
 <div class="dash-grid">
 <div class="dash-left">
 
@@ -32,6 +23,8 @@
 </div>
 {% endif %}
 </div>
+
+
 
 {% if result and result.fake_markers %}
 <div class="c" style="margin-bottom: 20px;">
@@ -75,7 +68,24 @@ document.addEventListener('DOMContentLoaded', () => {
 <div class="mr"><div class="mr-top"><span>TRUE</span><strong>{{ '%.1f'|format(result.prob_true * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_true * 100 }}%"></span></div></div>
 <div class="mr"><div class="mr-top"><span>FAKE</span><strong>{{ '%.1f'|format(result.prob_fake * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_fake * 100 }}%"></span></div></div>
 </div>
-<form method="post" action="{{ url_for('download_report') }}">
+
+{% if result.per_model_results %}
+<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt-model" style="margin-top: 15px;">Результати моделей</button>
+<div class="detail-box hidden" id="dp-model" style="margin-top: 10px;">
+<div class="tw"><table>
+<thead><tr><th style="text-align:left">Модель</th><th style="text-align:left">Завдання</th><th style="text-align:left">Результат</th><th style="text-align:right">Впевненість</th></tr></thead>
+<tbody>
+{% for m in result.per_model_results %}
+<tr class="row-{{ 't' if (m.task == 'fake' and m.fake_label == 'TRUE') else 'f' }}">
+<td style="text-align:left">{{ m.name }}</td><td style="text-align:left">{{ m.task }}</td>
+<td style="text-align:left">{% if m.task == 'fake' %}<strong>{{ m.fake_label }}</strong>{% else %}{{ m.theme }}{% endif %}</td>
+<td style="text-align:right">{% if m.task == 'fake' %}{{ '%.1f'|format(m.fake_confidence * 100) }}%{% else %}{{ '%.1f'|format(m.theme_confidence * 100) }}%{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('download_report') }}" style="margin-top: 15px;">
 <input type="hidden" name="analysis_json" value="{{ result | tojson | forceescape }}">
 <button type="submit" class="btn btn-s btn-sm">📄 Завантажити PDF</button>
 </form>
@@ -121,22 +131,6 @@ document.getElementById('feedback-form')?.addEventListener('submit', function(e)
 </div>
 </div>
 
-{% if result.per_model_results %}
-<div class="c anim-in">
-<h3 style="font-size:15px;margin-bottom:10px">Результати моделей</h3>
-<div class="tw"><table>
-<thead><tr><th>Модель</th><th>Завдання</th><th>Результат</th><th>Впевненість</th></tr></thead>
-<tbody>
-{% for m in result.per_model_results %}
-<tr class="row-{{ 't' if (m.task == 'fake' and m.fake_label == 'TRUE') else 'f' }}">
-<td>{{ m.name }}</td><td>{{ m.task }}</td>
-<td>{% if m.task == 'fake' %}{{ m.fake_label }}{% else %}{{ m.theme }}{% endif %}</td>
-<td>{% if m.task == 'fake' %}{{ '%.1f'|format(m.fake_confidence * 100) }}%{% else %}{{ '%.1f'|format(m.theme_confidence * 100) }}%{% endif %}</td>
-</tr>{% endfor %}
-</tbody></table></div>
-</div>
-{% endif %}
-
 {% else %}
 <div class="c ph"><strong>Результат з'явиться тут</strong>Введіть текст новини або вставте посилання та натисніть «Аналіз»</div>
 {% endif %}
@@ -144,16 +138,46 @@ document.getElementById('feedback-form')?.addEventListener('submit', function(e)
 </div>
 </div>
 
-<div class="ov" id="ov"><div class="sp"></div><p>Аналізуємо…</p></div>
+<style>
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+.skel { background: var(--bg2); border-radius: 4px; animation: pulse 1.5s infinite ease-in-out; }
+</style>
 
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
-const ta=document.getElementById('nt'),f=document.getElementById('af'),ov=document.getElementById('ov');
+const ta=document.getElementById('nt'),f=document.getElementById('af');
 document.getElementById('cb')?.addEventListener('click',()=>{ta.value='';ta.focus()});
 document.querySelectorAll('[data-ex]').forEach(b=>b.addEventListener('click',()=>{ta.value=b.dataset.ex;ta.focus()}));
 document.getElementById('dt')?.addEventListener('click',function(){
 const d=document.getElementById('dp');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Деталі теми':'Сховати'});
-f?.addEventListener('submit',()=>{if(ta.value.trim())ov.classList.add('on')});
+document.getElementById('dt-model')?.addEventListener('click',function(){
+const d=document.getElementById('dp-model');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Результати моделей':'Сховати результати'});
+
+f?.addEventListener('submit',()=>{
+    if(!ta.value.trim()) return;
+    const btn = document.getElementById('sb');
+    if(btn) btn.innerHTML = 'Аналізую...';
+    
+    const rightPanel = document.querySelector('.dash-right');
+    if (rightPanel) {
+        rightPanel.innerHTML = `
+          <div class="c res-card" style="border: 1px solid var(--border);">
+            <div class="skel" style="height: 24px; width: 60%; margin-bottom: 20px;"></div>
+            <div class="skel" style="height: 14px; width: 100%; margin-bottom: 10px;"></div>
+            <div class="skel" style="height: 14px; width: 80%; margin-bottom: 10px;"></div>
+            <div class="skel" style="height: 40px; width: 100%; margin-top: 20px;"></div>
+          </div>
+          <div class="c res-card" style="margin-top: 20px; border: 1px solid var(--border);">
+            <div class="skel" style="height: 24px; width: 40%; margin-bottom: 20px;"></div>
+            <div class="skel" style="height: 150px; width: 100%;"></div>
+          </div>
+        `;
+    }
+});
 });
 </script>
 {% endblock %}

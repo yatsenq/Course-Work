@@ -10,6 +10,13 @@
 <button type="submit" class="btn btn-d btn-sm">Очистити</button></form>
 </div>
 </div>
+
+<form method="get" action="{{ url_for('history') }}" style="display: flex; gap: 8px; margin-bottom: 20px;">
+  <input type="text" name="q" placeholder="Пошук за текстом або темою..." value="{{ q }}" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--f); font-size: 14px;">
+  <button type="submit" class="btn btn-p btn-sm">Пошук</button>
+  {% if q %}<a href="{{ url_for('history') }}" class="btn btn-s btn-sm">Скинути</a>{% endif %}
+</form>
+
 {% if history_items %}
 <div class="hist-list">
 {% for item in history_items %}
