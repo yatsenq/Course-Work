@@ -15,9 +15,9 @@
 <div class="dash-left">
 
 <div class="c">
-<h2 style="font-size:17px;margin-bottom:10px">Текст новини</h2>
+<h2 style="font-size:17px;margin-bottom:10px">Текст новини або посилання (URL)</h2>
 <form method="post" class="form-row" id="af">
-<textarea id="nt" name="news_text" placeholder="Встав сюди текст новини для аналізу…">{{ text }}</textarea>
+<textarea id="nt" name="news_text" placeholder="Встав сюди текст новини або URL-посилання для аналізу…">{{ text }}</textarea>
 <div class="form-act">
 <button type="submit" class="btn btn-p" id="sb">Аналіз</button>
 <button type="button" class="btn btn-s" id="cb">Очистити</button>
@@ -33,28 +33,33 @@
 {% endif %}
 </div>
 
-{% if current_user.is_authenticated %}
-<div class="c" id="history">
-<div class="hist-act">
-<h3 style="font-size:15px">Останні перевірки</h3>
-<div style="display:flex;gap:6px">
-<a class="btn btn-s btn-sm" href="{{ url_for('history') }}">Вся історія</a>
-<form method="post" action="{{ url_for('clear_history') }}" class="inline-form"><button type="submit" class="btn btn-d btn-sm">Очистити</button></form>
+{% if result and result.fake_markers %}
+<div class="c" style="margin-bottom: 20px;">
+<h3 style="font-size:15px; margin-bottom:10px">Аналіз тексту (Highlighting)</h3>
+<p style="font-size: 13px; color: var(--t2); margin-bottom: 8px;">Зеленим підсвічені слова, що характерні для правдивих новин, червоним — для фейків.</p>
+<div id="highlighted-text" style="font-size: 14px; line-height: 1.6; padding: 10px; background: var(--bg2); border-radius: 8px; white-space: pre-wrap;">
+{{ result.input_text }}
 </div>
-</div>
-{% if history_items %}
-<div class="hist-list">
-{% for item in history_items %}
-<div class="hist-i">
-<div class="hist-top"><div><strong>{{ item.fake_label }}</strong> <span style="color:var(--t3)">{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div>
-<div class="hist-badges"><span class="tag">{{ item.theme }}</span></div></div>
-<p>{{ item.input_text }}</p>
-</div>
-{% endfor %}
-</div>
-{% else %}<p style="color:var(--t3);font-size:13px">Немає перевірок</p>{% endif %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const markers = {{ result.fake_markers | tojson | safe }};
+    const el = document.getElementById('highlighted-text');
+    let html = el.textContent;
+    markers.forEach(m => {
+        // LogReg negative coef -> FAKE, positive -> TRUE
+        const color = m.score < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)';
+        // escape regex chars
+        const keyword = m.keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`(?<![а-яА-Яіїєґ])(${keyword})(?![а-яА-Яіїєґ])`, 'gi');
+        html = html.replace(regex, `<span style="background-color: ${color}; padding: 0 2px; border-radius: 3px;">$1</span>`);
+    });
+    el.innerHTML = html;
+});
+</script>
 </div>
 {% endif %}
+
+
 
 </div>
 <div class="dash-right">
@@ -74,6 +79,26 @@
 <input type="hidden" name="analysis_json" value="{{ result | tojson | forceescape }}">
 <button type="submit" class="btn btn-s btn-sm">📄 Завантажити PDF</button>
 </form>
+{% if current_user.is_authenticated and result.history_id %}
+<div style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;" id="feedback-container">
+  <p style="font-size: 13px; color: var(--t2); margin-bottom: 6px;">Чи згодні ви з результатом?</p>
+  <form method="post" action="{{ url_for('submit_feedback', history_id=result.history_id) }}" id="feedback-form" style="display: flex; gap: 8px;">
+    <button type="submit" name="is_correct" value="1" class="btn btn-s btn-sm">👍 Згоден</button>
+    <button type="submit" name="is_correct" value="0" class="btn btn-d btn-sm">👎 Не згоден</button>
+  </form>
+</div>
+<script>
+document.getElementById('feedback-form')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    formData.append('is_correct', e.submitter.value);
+    fetch(this.action, { method: 'POST', body: formData, headers: {'Fetch': 'true'} })
+      .then(() => {
+          document.getElementById('feedback-container').innerHTML = '<p style="color:var(--t2);font-size:13px;font-weight:500;">Дякуємо за відгук! Це допоможе покращити систему.</p>';
+      });
+});
+</script>
+{% endif %}
 </div>
 
 <div class="c res-card anim-in">
@@ -113,7 +138,7 @@
 {% endif %}
 
 {% else %}
-<div class="c ph"><strong>Результат з'явиться тут</strong>Введіть текст новини та натисніть «Аналіз»</div>
+<div class="c ph"><strong>Результат з'явиться тут</strong>Введіть текст новини або вставте посилання та натисніть «Аналіз»</div>
 {% endif %}
 
 </div>
