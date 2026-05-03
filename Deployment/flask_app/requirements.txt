@@ -12,3 +12,4 @@ scikit-learn>=1.5.0
 numpy>=1.26.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0
+Flask-Limiter>=3.5.0
