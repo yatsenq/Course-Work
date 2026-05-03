@@ -5,7 +5,17 @@
   --t:#dde1ea;--t2:#8b91a3;--t3:#5c6178;--ac:#6c63ff;--acl:#8b84ff;
   --ok:#2dd4a0;--ok-bg:rgba(45,212,160,.1);--ok-b:rgba(45,212,160,.25);
   --no:#ff6b81;--no-bg:rgba(255,107,129,.1);--no-b:rgba(255,107,129,.25);
-  --r:14px
+  --r:14px;
+  --bg2:var(--card2);
+  --p:var(--ac);
+  --f:var(--no);
+  --border:var(--b);
+}
+html.light-theme {
+  --bg:#f9fafb;--card:#ffffff;--card2:#f3f4f6;--b:#e5e7eb;--bh:#d1d5db;
+  --t:#111827;--t2:#4b5563;--t3:#9ca3af;--ac:#4f46e5;--acl:#6366f1;
+  --ok:#10b981;--ok-bg:rgba(16,185,129,.1);--ok-b:rgba(16,185,129,.25);
+  --no:#ef4444;--no-bg:rgba(239,68,68,.1);--no-b:rgba(239,68,68,.25);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t);

@@ -16,6 +16,9 @@
 <a href="{{ url_for('index') }}">Головна</a>
 <a href="{{ url_for('dashboard') }}">Аналіз</a>
 {% if current_user.is_authenticated %}
+{% if current_user.is_admin %}
+<a href="{{ url_for('admin_panel') }}" style="color: var(--p);">Адмін-панель</a>
+{% endif %}
 <a href="{{ url_for('history') }}">Історія</a>
 <span class="nav-u">{{ current_user.username }}</span>
 <a class="nav-o" href="{{ url_for('logout') }}">Вийти</a>
@@ -24,8 +27,23 @@
 <a href="{{ url_for('login') }}">Вхід</a>
 <a href="{{ url_for('register') }}">Реєстрація</a>
 {% endif %}
+<button id="theme-toggle" class="btn btn-s btn-sm" style="margin-left: 10px; padding: 4px 8px; font-size: 14px; background: transparent; border: none; cursor: pointer;">🌙</button>
 </nav>
 </div></header>
+<script>
+  const toggleBtn = document.getElementById('theme-toggle');
+  const currentTheme = localStorage.getItem('theme') || 'dark';
+  if (currentTheme === 'light') {
+      document.documentElement.classList.add('light-theme');
+      toggleBtn.innerText = '☀️';
+  }
+  toggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('light-theme');
+      const isLight = document.documentElement.classList.contains('light-theme');
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+      toggleBtn.innerText = isLight ? '☀️' : '🌙';
+  });
+</script>
 <main class="wrap main">
 {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
 <div class="flash">{% for cat, msg in messages %}<div class="fl fl-{{ cat }}">{{ msg }}</div>{% endfor %}</div>
