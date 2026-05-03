@@ -180,13 +180,20 @@ class CheckHistory(db.Model):
     def analysis(self):
         return json.loads(self.analysis_json or "{}")
 
+class Feedback(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    history_id = db.Column(db.Integer, db.ForeignKey("check_history.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    is_correct = db.Column(db.Boolean, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-def save_history_item(user_id: int, text: str, result: dict) -> None:
+def save_history_item(user_id: int, text: str, result: dict) -> CheckHistory:
     history = CheckHistory(
         user_id=user_id,
         input_text=text,
@@ -200,6 +207,7 @@ def save_history_item(user_id: int, text: str, result: dict) -> None:
     )
     db.session.add(history)
     db.session.commit()
+    return history
 
 
 def _pretty_model_name(model_name: str) -> str:
@@ -464,17 +472,34 @@ def inject_globals():
     if current_user.is_authenticated:
         items = CheckHistory.query.filter_by(user_id=current_user.id).all()
         total = len(items)
+        today = datetime.utcnow().date()
+        today_count = sum(1 for i in items if i.created_at.date() == today)
         true_count = sum(1 for i in items if i.fake_label == "TRUE")
         fake_count = total - true_count
         themes = {}
         for i in items:
             themes[i.theme] = themes.get(i.theme, 0) + 1
         top_theme = max(themes, key=themes.get) if themes else "—"
+        
+        # Extended chart data
+        theme_labels = list(themes.keys())
+        theme_data = list(themes.values())
+        
+        # Global daily stats
+        global_today_fakes = CheckHistory.query.filter(
+            CheckHistory.fake_label == "FAKE",
+            db.func.date(CheckHistory.created_at) == today
+        ).count()
+
         stats = {
             "total": total,
+            "today_count": today_count,
             "true_count": true_count,
             "fake_count": fake_count,
             "top_theme": top_theme,
+            "theme_labels": theme_labels,
+            "theme_data": theme_data,
+            "global_today_fakes": global_today_fakes,
         }
     return {
         "examples": EXAMPLE_NEWS,
@@ -601,19 +626,41 @@ def logout():
 def dashboard():
     ensure_model_preload()
 
+    if not current_user.is_authenticated and not session.get("guest_mode", False):
+        flash("Спочатку увійдіть в акаунт або оберіть «Гість», щоб почати аналіз.", "error")
+        return redirect(url_for("index"))
+
     result = None
     text = ""
 
     if request.method == "POST":
         text = request.form.get("news_text", "").strip()
+        
+        # URL Parsing feature
+        if text.startswith("http://") or text.startswith("https://"):
+            try:
+                import requests
+                from bs4 import BeautifulSoup
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                resp = requests.get(text, headers=headers, timeout=5)
+                soup = BeautifulSoup(resp.text, "html.parser")
+                paragraphs = soup.find_all("p")
+                text = "\n".join(p.get_text() for p in paragraphs).strip()
+                if not text:
+                    flash("Не вдалося витягнути текст із сайту.", "error")
+            except Exception as e:
+                flash("Помилка парсингу посилання.", "error")
+                text = ""
+
         if not text:
-            flash("Введіть текст новини.", "error")
+            flash("Введіть текст новини або коректне посилання.", "error")
         else:
             try:
                 result = ml_service.predict_selected_models(text, MODEL_BASE_DIR)
 
                 if current_user.is_authenticated:
-                    save_history_item(current_user.id, text, result)
+                    history_record = save_history_item(current_user.id, text, result)
+                    result["history_id"] = history_record.id
                 flash("Аналіз виконано.", "success")
             except Exception as exc:
                 flash(f"Помилка аналізу: {exc}", "error")
@@ -676,6 +723,22 @@ def download_report():
         download_name=filename,
     )
 
+
+@app.route("/feedback/<int:history_id>", methods=["POST"])
+@login_required
+def submit_feedback(history_id):
+    is_correct = request.form.get("is_correct") == "1"
+    existing = Feedback.query.filter_by(history_id=history_id, user_id=current_user.id).first()
+    if existing:
+        existing.is_correct = is_correct
+    else:
+        fb = Feedback(history_id=history_id, user_id=current_user.id, is_correct=is_correct)
+        db.session.add(fb)
+    db.session.commit()
+    if request.headers.get("Fetch") == "true":
+        return {"status": "ok"}
+    flash("Дякуємо за відгук! Це допоможе покращити модель.", "success")
+    return redirect(url_for("dashboard"))
 
 @app.cli.command("init-db")
 def init_db_command():
