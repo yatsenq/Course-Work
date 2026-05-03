@@ -855,6 +855,21 @@ def predict_selected_models(text: str, model_base_dir: str) -> dict[str, Any]:
     except Exception:
         result["theme_markers"] = []
 
+    try:
+        lv = res["logreg_vec"].transform([text])
+        lr = res["logreg_model"]
+        feature_names = res["logreg_vec"].get_feature_names_out()
+        non_zero = lv.nonzero()[1]
+        fake_markers = []
+        for idx in non_zero:
+            coef = float(lr.coef_[0][idx])
+            # Assuming negative is FAKE, positive is TRUE (typical for binary logreg)
+            fake_markers.append({"keyword": feature_names[idx], "score": coef})
+        # take top 15 most impactful words
+        result["fake_markers"] = sorted(fake_markers, key=lambda x: abs(x["score"]), reverse=True)[:15]
+    except Exception:
+        result["fake_markers"] = []
+
     result["input_text"] = text
     result["per_model_results"] = per_model
     return result
