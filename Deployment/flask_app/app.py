@@ -7,14 +7,17 @@ import os
 import re
 import secrets
 import threading
+import hashlib
 from datetime import datetime
 from functools import lru_cache
 from html import escape
 from pathlib import Path
 
-from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for, Response
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -127,6 +130,13 @@ app.config["SQLALCHEMY_DATABASE_URI"] = normalize_database_url(database_url)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
 MODEL_BASE_DIR = os.getenv("MODEL_BASE_DIR", str(Path(__file__).resolve().parents[2]))
 
 db = SQLAlchemy(app)
@@ -155,7 +165,8 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -185,6 +196,12 @@ class Feedback(db.Model):
     history_id = db.Column(db.Integer, db.ForeignKey("check_history.id"), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     is_correct = db.Column(db.Boolean, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+class AnalysisCache(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    text_hash = db.Column(db.String(64), unique=True, nullable=False)
+    result_json = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -656,7 +673,16 @@ def dashboard():
             flash("Введіть текст новини або коректне посилання.", "error")
         else:
             try:
-                result = ml_service.predict_selected_models(text, MODEL_BASE_DIR)
+                # Caching logic
+                text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+                cached = AnalysisCache.query.filter_by(text_hash=text_hash).first()
+                if cached:
+                    result = json.loads(cached.result_json)
+                else:
+                    result = ml_service.predict_selected_models(text, MODEL_BASE_DIR)
+                    cache_entry = AnalysisCache(text_hash=text_hash, result_json=json.dumps(result, ensure_ascii=False))
+                    db.session.add(cache_entry)
+                    db.session.commit()
 
                 if current_user.is_authenticated:
                     history_record = save_history_item(current_user.id, text, result)
@@ -675,11 +701,16 @@ def dashboard():
     )
 
 
-@app.route("/history", endpoint="history")
+@app.route("/history")
 @login_required
 def history():
-    history_items = get_history_items(limit=None)
-    return render_template("history.html", history_items=history_items)
+    q = request.args.get("q", "").strip()
+    query = CheckHistory.query.filter_by(user_id=current_user.id)
+    if q:
+        search = f"%{q}%"
+        query = query.filter(db.or_(CheckHistory.input_text.ilike(search), CheckHistory.theme.ilike(search)))
+    items = query.order_by(CheckHistory.created_at.desc()).all()
+    return render_template("history.html", history_items=items, q=q)
 
 
 @app.route("/history/clear", methods=["POST"])
@@ -726,6 +757,7 @@ def download_report():
 
 @app.route("/feedback/<int:history_id>", methods=["POST"])
 @login_required
+@limiter.limit("5 per minute")
 def submit_feedback(history_id):
     is_correct = request.form.get("is_correct") == "1"
     existing = Feedback.query.filter_by(history_id=history_id, user_id=current_user.id).first()
@@ -740,11 +772,71 @@ def submit_feedback(history_id):
     flash("Дякуємо за відгук! Це допоможе покращити модель.", "success")
     return redirect(url_for("dashboard"))
 
+@app.route("/admin")
+@login_required
+def admin_panel():
+    if not current_user.is_admin:
+        flash("Доступ заборонено.", "error")
+        return redirect(url_for("index"))
+    
+    users_count = User.query.count()
+    checks_count = CheckHistory.query.count()
+    feedbacks = Feedback.query.order_by(Feedback.created_at.desc()).limit(50).all()
+    
+    # gather details for feedbacks
+    feedback_data = []
+    for fb in feedbacks:
+        hist = CheckHistory.query.get(fb.history_id)
+        user = User.query.get(fb.user_id)
+        if hist and user:
+            feedback_data.append({
+                "id": fb.id,
+                "email": user.email,
+                "text": hist.input_text[:100] + "...",
+                "is_correct": fb.is_correct,
+                "date": fb.created_at
+            })
+
+    return render_template("admin.html", users=users_count, checks=checks_count, feedbacks=feedback_data)
+
+@app.route("/admin/export_feedback")
+@login_required
+def export_feedback():
+    if not current_user.is_admin:
+        return "Access denied", 403
+    import csv
+    import io
+    from flask import Response
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Feedback ID', 'User Email', 'Is Correct', 'Text', 'Fake Label', 'Prob True', 'Theme', 'Date'])
+    
+    feedbacks = Feedback.query.all()
+    for fb in feedbacks:
+        hist = CheckHistory.query.get(fb.history_id)
+        user = User.query.get(fb.user_id)
+        if hist and user:
+            writer.writerow([fb.id, user.email, fb.is_correct, hist.input_text, hist.fake_label, hist.prob_true, hist.theme, fb.created_at])
+            
+    return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=feedback_export.csv"})
+
 @app.cli.command("init-db")
 def init_db_command():
     db.create_all()
     print("Database initialized")
 
+import click
+@app.cli.command("make-admin")
+@click.argument("email")
+def make_admin_command(email):
+    user = User.query.filter_by(email=email).first()
+    if user:
+        user.is_admin = True
+        db.session.commit()
+        print(f"Success! {email} is now an admin.")
+    else:
+        print("User not found.")
 
 with app.app_context():
     db.create_all()
