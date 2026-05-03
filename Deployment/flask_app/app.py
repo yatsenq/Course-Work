@@ -332,7 +332,6 @@ def get_history_items(limit: int | None = 12):
 
 def build_pdf_buffer(payload: dict) -> io.BytesIO:
     body_font, bold_font = get_pdf_fonts()
-    model_metrics = load_model_comparison_metrics()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -453,59 +452,6 @@ def build_pdf_buffer(payload: dict) -> io.BytesIO:
         story.append(table)
     else:
         story.append(para("Для цієї теми маркери не вдалося витягнути з моделі.", small_style))
-
-    def append_model_table(title: str, summary: dict[str, object], rows: list[dict[str, object]], headers: list[str], keys: list[str]) -> None:
-        story.append(Spacer(1, 6))
-        story.append(Paragraph(title, section_style))
-        story.append(
-            para(
-                f"Моделей: {summary['models_compared']}. Найкраща: {summary['best_overall']} ({summary['best_metric_label']}: {summary['best_metric_value']}, {summary['best_secondary_label']}: {summary['best_secondary_value']}).",
-                small_style,
-            )
-        )
-
-        table_data = [headers]
-        best_row_index: int | None = None
-        for index, row in enumerate(rows, start=1):
-            table_data.append([row.get(key, "") for key in keys])
-            if row.get("is_best"):
-                best_row_index = index
-
-        table = Table(table_data, colWidths=[40 * mm] + [25 * mm] * (len(headers) - 1))
-        table_style = [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d1fae5")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#064e3b")),
-            ("FONTNAME", (0, 0), (-1, 0), bold_font),
-            ("FONTNAME", (0, 1), (-1, -1), body_font),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("LEADING", (0, 0), (-1, -1), 11),
-        ]
-        if best_row_index is not None:
-            table_style.extend(
-                [
-                    ("BACKGROUND", (0, best_row_index), (-1, best_row_index), colors.HexColor("#eff6ff")),
-                    ("FONTNAME", (0, best_row_index), (-1, best_row_index), bold_font),
-                ]
-            )
-        table.setStyle(TableStyle(table_style))
-        story.append(table)
-
-    append_model_table(
-        "Порівняння моделей fake detection",
-        model_metrics["fake_detection"],
-        model_metrics["fake_detection"]["rows"],
-        ["Модель", "Accuracy", "Precision", "Recall", "F1", "ROC-AUC"],
-        ["model", "accuracy", "precision", "recall", "f1", "roc_auc"],
-    )
-
-    append_model_table(
-        "Порівняння моделей topic classification",
-        model_metrics["topic_classification"],
-        model_metrics["topic_classification"]["rows"],
-        ["Модель", "Accuracy", "Macro-F1", "Weighted-F1"],
-        ["model", "accuracy", "macro_f1", "weighted_f1"],
-    )
 
     doc.build(story)
     buffer.seek(0)
