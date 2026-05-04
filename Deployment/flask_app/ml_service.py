@@ -835,13 +835,18 @@ def predict_selected_models(text: str, model_base_dir: str) -> dict[str, Any]:
     # --- build combined result ------------------------------------------------
     fake_r = [m for m in per_model if m["task"] == "fake"]
     topic_r = [m for m in per_model if m["task"] == "topic"]
-    best_f = max(fake_r, key=lambda x: x["fake_confidence"], default=None)
-    best_t = max(topic_r, key=lambda x: x["theme_confidence"], default=None)
-
+    
     result: dict[str, Any] = {}
-    if best_f:
-        result.update({k: best_f[k] for k in
-                       ("fake_label", "fake_confidence", "prob_true", "prob_fake")})
+    
+    if fake_r:
+        avg_pt = sum(m["prob_true"] for m in fake_r) / len(fake_r)
+        avg_pf = sum(m["prob_fake"] for m in fake_r) / len(fake_r)
+        result["prob_true"] = avg_pt
+        result["prob_fake"] = avg_pf
+        result["fake_label"] = "TRUE" if avg_pt >= avg_pf else "FAKE"
+        result["fake_confidence"] = max(avg_pt, avg_pf)
+        
+    best_t = max(topic_r, key=lambda x: x["theme_confidence"], default=None)
     if best_t:
         result.update({k: best_t[k] for k in
                        ("theme", "theme_confidence", "theme_distribution")})
