@@ -13,6 +13,7 @@ import pymorphy3
 import torch
 import torch.nn as nn
 from transformers import BertModel, BertTokenizerFast
+from huggingface_hub import snapshot_download
 
 
 class BertClassifierHeadA(nn.Module):
@@ -628,104 +629,114 @@ def predict_all_models(text: str, model_base_dir: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-#  Optimised selected-models inference (4 models instead of ~10)
+#  Optimised selected-models inference
 # ---------------------------------------------------------------------------
 _SELECTED_MODELS_CACHE: dict[str, Any] = {}
 _SELECTED_MODELS_LOCK = threading.Lock()
 
+def _checkpoint_head_type(path: Path, ckpt: dict, weights: dict) -> str:
+    """Detect if the checkpoint uses Head A, B, or C based on keys."""
+    if "head_type" in ckpt:
+        return ckpt["head_type"]
+    keys = list(weights.keys())
+    has_attn = any("attention_pool" in k for k in keys)
+    has_bn = any("classifier.1.weight" in k for k in keys)
+    if has_attn: return "C"
+    if has_bn: return "B"
+    return "A"
+
+HEAD_CLASSES = {
+    "A": BertClassifierHeadA,
+    "B": BertClassifierHeadB,
+    "C": BertClassifierHeadC
+}
 
 def load_selected_models(model_base_dir: str) -> dict[str, Any]:
     """Load only the 4 selected models for production inference."""
     cache_key = str(Path(model_base_dir).resolve())
-    cached = _SELECTED_MODELS_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
     with _SELECTED_MODELS_LOCK:
-        cached = _SELECTED_MODELS_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
+        if cache_key in _SELECTED_MODELS_CACHE:
+            return _SELECTED_MODELS_CACHE[cache_key]
 
-        base = Path(model_base_dir)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        exp = base / "experiments" / "models"
+        
+        # --- HUGGING FACE HUB SYNC ---
+        REPO_ID = "yatsenq/news-detector-weights"
+        print(f"Syncing models from {REPO_ID}...")
+        
+        try:
+            weights_path = Path(snapshot_download(
+                repo_id=REPO_ID, 
+                repo_type="model",
+                token=os.getenv("HF_TOKEN")
+            ))
+            exp = weights_path / "models"
+        except Exception as e:
+            print(f"Warning: Could not sync from HF Hub ({e}). Falling back to local paths.")
+            base = Path(model_base_dir)
+            exp = base / "experiments" / "models"
 
         # --- tokenizer --------------------------------------------------------
-        tok_path = exp / "bert_tokenizer"
-        if not tok_path.exists():
-            tok_path = exp / "07" / "bert_tokenizer"
-        tokenizer = BertTokenizerFast.from_pretrained(tok_path)
-
-        # --- 1. Baseline LogReg (fake) — optional -----------------------------
-        logreg_model = logreg_vec = None
+        tokenizer_path = str(exp / "bert_tokenizer")
         try:
-            logreg_model = joblib.load(exp / "01" / "baseline_logreg_model.pkl")
-            logreg_vec = joblib.load(exp / "01" / "baseline_logreg_vectorizer.pkl")
-        except Exception:
-            logreg_model = logreg_vec = None
+            if os.path.exists(tokenizer_path):
+                tokenizer = BertTokenizerFast.from_pretrained(tokenizer_path, local_files_only=True)
+            else:
+                print(f"Tokenizer not found at {tokenizer_path}, falling back to online version.")
+                tokenizer = BertTokenizerFast.from_pretrained("bert-base-multilingual-cased")
+        except Exception as te:
+            print(f"Error loading local tokenizer ({te}), using online fallback.")
+            tokenizer = BertTokenizerFast.from_pretrained("bert-base-multilingual-cased")
+
+        # --- 1. Baseline LogReg (fake) ----------------------------------------
+        logreg_model = joblib.load(exp / "01" / "baseline_logreg_model.pkl")
+        logreg_vec = joblib.load(exp / "01" / "baseline_logreg_vectorizer.pkl")
 
         # --- 2. BERT HeadC (fake) ---------------------------------------------
-        bert_fake = None
-        fake_max_len = 256
-        try:
-            fake_ckpt = _load_checkpoint(exp / "02" / "bert_fake_headc_best.pt", device)
-            fake_backbone = _backbone_name(fake_ckpt)
-            fake_max_len = int(fake_ckpt.get("max_len", 256))
-            fake_nc = int(fake_ckpt.get("num_classes", 2))
-            bert_fake = BertClassifierHeadC(fake_backbone, num_classes=fake_nc).to(device)
-            bert_fake.load_state_dict(fake_ckpt.get("model_state_dict", fake_ckpt))
-            bert_fake.eval()
-        except Exception:
-            bert_fake = None
+        fake_path = exp / "02" / "bert_fake_headc_best.pt"
+        fake_ckpt = _load_checkpoint(fake_path, device)
+        fake_weights = fake_ckpt.get("model_state_dict", fake_ckpt)
+        fake_backbone = _backbone_name(fake_ckpt)
+        fake_max_len = int(fake_ckpt.get("max_len", 256))
+        
+        # Авто-визначення типу голови
+        fake_ht = _checkpoint_head_type(fake_path, fake_ckpt, fake_weights)
+        fake_cls = HEAD_CLASSES.get(fake_ht, BertClassifierHeadC)
+        
+        bert_fake = fake_cls(fake_backbone, num_classes=2).to(device)
+        bert_fake.load_state_dict(fake_weights, strict=False)
+        bert_fake.eval()
 
-        # --- 3. SVM expB (topic) — optional -----------------------------------
-        svm_model = svm_vec = None
-        try:
-            with open(exp / "05" / "topic_svm_expB_model.pkl", "rb") as f:
-                svm_model = pickle.load(f)
-            with open(exp / "05" / "topic_svm_expB_vectorizer.pkl", "rb") as f:
-                svm_vec = pickle.load(f)
-        except Exception:
-            svm_model = svm_vec = None
+        # --- 3. SVM expB (topic) ----------------------------------------------
+        with open(exp / "05" / "topic_svm_expB_model.pkl", "rb") as f:
+            svm_model = pickle.load(f)
+        with open(exp / "05" / "topic_svm_expB_vectorizer.pkl", "rb") as f:
+            svm_vec = pickle.load(f)
 
         # --- 4. BERT topic expB -----------------------------------------------
-        bert_topic = None
-        topic_max_len = 256
-        topic_le = None
-        try:
-            topic_ckpt = _load_checkpoint(
-                exp / "07" / "bert_topic_expb_detector_best.pt", device,
-            )
-            topic_backbone = _backbone_name(topic_ckpt)
-            topic_max_len = int(topic_ckpt.get("max_len", 256))
-            topic_nc = int(topic_ckpt.get("num_classes", 2))
-            topic_ht = _checkpoint_head_type(
-                exp / "07" / "bert_topic_expb_detector_best.pt",
-                topic_ckpt,
-                topic_ckpt.get("model_state_dict", topic_ckpt),
-            )
-            topic_cls = HEAD_CLASSES.get(topic_ht, BertClassifierHeadC)
-            bert_topic = topic_cls(topic_backbone, num_classes=topic_nc).to(device)
-            bert_topic.load_state_dict(topic_ckpt.get("model_state_dict", topic_ckpt))
-            bert_topic.eval()
-        except Exception:
-            bert_topic = None
+        topic_path = exp / "07" / "bert_topic_expb_detector_best.pt"
+        topic_ckpt = _load_checkpoint(topic_path, device)
+        topic_weights = topic_ckpt.get("model_state_dict", topic_ckpt)
+        topic_backbone = _backbone_name(topic_ckpt)
+        topic_max_len = int(topic_ckpt.get("max_len", 256))
+        
+        # Авто-визначення типу голови
+        topic_ht = _checkpoint_head_type(topic_path, topic_ckpt, topic_weights)
+        topic_cls = HEAD_CLASSES.get(topic_ht, BertClassifierHeadC)
+        
+        bert_topic = topic_cls(topic_backbone, num_classes=2).to(device)
+        bert_topic.load_state_dict(topic_weights, strict=False)
+        bert_topic.eval()
 
-        try:
-            with open(exp / "07" / "label_encoder.pkl", "rb") as f:
-                topic_le = pickle.load(f)
-        except Exception:
-            topic_le = None
+        with open(exp / "07" / "label_encoder.pkl", "rb") as f:
+            topic_le = pickle.load(f)
 
         # --- shared helpers ---------------------------------------------------
-        # Шукаємо стоп-слова в декількох місцях для гнучкості
-        stopwords_candidates = [
-            base / "stopwords_ua.txt",
-            exp / "stopwords_ua.txt",
-            base / "Models" / "stopwords_ua.txt"
-        ]
-        stopwords_path = next((p for p in stopwords_candidates if p.exists()), stopwords_candidates[0])
-        
+        stopwords_path = exp / "stopwords_ua.txt"
+        if not stopwords_path.exists():
+            # fallback if it's in the root of the repo
+            stopwords_path = weights_path / "stopwords_ua.txt"
+
         try:
             with open(stopwords_path, "r", encoding="utf-8") as f:
                 stopwords = set(f.read().split())

@@ -8,12 +8,15 @@ import re
 import secrets
 import threading
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from html import escape
 from pathlib import Path
+import logging
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for, Response
+from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
@@ -98,18 +101,41 @@ def get_pdf_fonts() -> tuple[str, str]:
         except Exception:
             pass
 
+    logging.getLogger(__name__).warning(
+        "Unicode PDF fonts were not found; falling back to Helvetica. Cyrillic text may render incorrectly."
+    )
     return "Helvetica", "Helvetica-Bold"
 
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 
 base_dir = Path(__file__).resolve().parent
 load_env_file(base_dir / ".env")
 
 secret_key = os.getenv("SECRET_KEY")
 if not secret_key:
-    secret_key = secrets.token_urlsafe(48)
+    secret_key = secrets.token_hex(32) 
 app.config["SECRET_KEY"] = secret_key
+
+CORS(app, 
+     resources={r"/*": {
+         "origins": [
+             "http://localhost",
+             "http://localhost:5000",
+             "http://127.0.0.1",
+             "http://127.0.0.1:5000",
+             "https://huggingface.co",
+             r"https://.*\\.huggingface\\.co",
+             r"https://.*\\.hf\\.space"
+         ]
+     }},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "X-CSRFToken"],
+     methods=["GET", "POST", "OPTIONS", "DELETE", "PUT"])
+
+# CSRF захист
+csrf = CSRFProtect(app)
 
 instance_path = base_dir / "instance"
 default_db = instance_path / "site.db"
@@ -129,6 +155,26 @@ else:
 app.config["SQLALCHEMY_DATABASE_URI"] = normalize_database_url(database_url)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
+# Динамічна конфігурація для локального та HF
+# HF always runs behind HTTPS and often in a cross-site iframe on huggingface.co.
+is_hf_space = bool(os.getenv("SPACE_ID"))
+is_https = os.getenv("SECURE_COOKIES", "false").lower() == "true" or is_hf_space
+app.config["SESSION_COOKIE_SECURE"] = is_https
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# На HTTPS (HF) використовуємо "None" для cross-site cookies в iframe
+# На HTTP (локально) використовуємо "Lax"
+app.config["SESSION_COOKIE_SAMESITE"] = "None" if is_https else "Lax"
+app.config["REMEMBER_COOKIE_SECURE"] = is_https
+app.config["REMEMBER_COOKIE_HTTPONLY"] = True
+app.config["REMEMBER_COOKIE_SAMESITE"] = "None" if is_https else "Lax"
+
+# CSRF конфігурація - дозволити CSRF з однакових доменів
+app.config["WTF_CSRF_CHECK_DEFAULT"] = True
+app.config["WTF_CSRF_SSL_STRICT"] = False  # Для локального тестування
+app.config["WTF_CSRF_TIME_LIMIT"] = None  # Без часового ліміту
 
 limiter = Limiter(
     get_remote_address,
@@ -136,6 +182,10 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"],
     storage_uri="memory://"
 )
+
+# Для Hugging Face та інших reverse proxy сервісів
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 def get_model_base_dir():
     # 1. Environment variable
@@ -163,6 +213,11 @@ login_manager = LoginManager(app)
 login_manager.login_view = "login"
 login_manager.login_message = "Увійдіть, щоб продовжити."
 
+@app.before_request
+def make_session_permanent():
+    session.permanent = True
+    app.permanent_session_lifetime = timedelta(days=7)
+
 
 EXAMPLE_NEWS = [
     {
@@ -186,6 +241,8 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    last_active = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -226,7 +283,39 @@ class AnalysisCache(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    try:
+        user = db.session.get(User, int(user_id))
+        return user
+    except Exception as e:
+        print(f"Error loading user {user_id}: {e}")
+        return None
+
+@app.before_request
+def check_user_active():
+    """Перевіряємо, чи користувач активний"""
+    if current_user.is_authenticated:
+        # Перезавантажуємо користувача з БД, щоб отримати актуальні дані
+        try:
+            user = db.session.get(User, current_user.id)
+            if user and not user.is_active:
+                logout_user()
+                flash("Ваш акаунт був деактивований.", "error")
+                return redirect(url_for("login"))
+        except Exception:
+            # Ігноруємо помилки БД
+            pass
+
+@app.after_request
+def update_last_active(response):
+    """Оновлюємо last_active після успішного запиту"""
+    try:
+        if current_user.is_authenticated:
+            current_user.last_active = datetime.utcnow()
+            db.session.commit()
+    except Exception as e:
+        # Не порушуємо сесію при помилці БД
+        db.session.rollback()
+    return response
 
 
 def save_history_item(user_id: int, text: str, result: dict) -> CheckHistory:
@@ -542,12 +631,20 @@ def inject_globals():
         "guest_mode": session.get("guest_mode", False) and not current_user.is_authenticated,
         "model_metrics": load_model_comparison_metrics(),
         "stats": stats,
+        "csrf_token": generate_csrf,
     }
 
 
 _model_preload_started = False
 _model_preload_lock = threading.Lock()
 
+# CSRF Error Handler
+from flask_wtf.csrf import CSRFError
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash(f"CSRF помилка: {e.description}", "error")
+    return redirect(url_for("index"))
 
 def ensure_model_preload() -> None:
     global _model_preload_started
@@ -607,14 +704,19 @@ def register():
             flash("Пароль має містити мінімум 6 символів.", "error")
             return redirect(url_for("register"))
 
-        existing = User.query.filter(or_(User.username == username, User.email == email)).first()
-        if existing:
-            flash("Користувач з таким логіном або email вже існує.", "error")
-            return redirect(url_for("register"))
+        try:
+            existing = User.query.filter(or_(User.username == username, User.email == email)).first()
+            if existing:
+                flash("Користувач з таким логіном або email вже існує.", "error")
+                return redirect(url_for("register"))
 
-        user = User(username=username, email=email, password_hash=generate_password_hash(password))
-        db.session.add(user)
-        db.session.commit()
+            user = User(username=username, email=email, password_hash=generate_password_hash(password))
+            db.session.add(user)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("База даних тимчасово недоступна. Спробуйте ще раз пізніше.", "error")
+            return redirect(url_for("register"))
 
         flash("Реєстрація успішна. Тепер увійдіть у систему.", "success")
         return redirect(url_for("login"))
@@ -637,14 +739,32 @@ def login():
             flash("Введіть коректний email.", "error")
             return redirect(url_for("login"))
 
-        user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            session.pop("guest_mode", None)
-            flash("Вхід виконано успішно.", "success")
-            return redirect(url_for("dashboard"))
+        try:
+            user = User.query.filter_by(email=email).first()
+            if not user:
+                flash(f"Користувач з email {email} не знайдено.", "error")
+                return redirect(url_for("login"))
 
-        flash("Невірний email або пароль.", "error")
+            if not check_password_hash(user.password_hash, password):
+                flash("Невірний пароль.", "error")
+                return redirect(url_for("login"))
+
+            if not user.is_active:
+                flash("Ваш акаунт був деактивований адміністратором.", "error")
+                return redirect(url_for("login"))
+
+            # Логуємо користувача з remember=True для постійної сесії
+            login_user(user, remember=True)
+            session.pop("guest_mode", None)
+            user.last_active = datetime.utcnow()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("База даних тимчасово недоступна. Спробуйте ще раз пізніше.", "error")
+            return redirect(url_for("login"))
+
+        flash("Вхід виконано успішно.", "success")
+        return redirect(url_for("dashboard"))
 
     return render_template("login.html")
 
@@ -653,6 +773,7 @@ def login():
 @login_required
 def logout():
     session.pop("guest_mode", None)
+    session.clear()  # Очищаємо всю сесію
     logout_user()
     flash("Ви вийшли з акаунта.", "success")
     return redirect(url_for("index"))
@@ -720,6 +841,7 @@ def dashboard():
     )
 
 
+@csrf.exempt
 @app.route("/api/random_example/<example_type>")
 @limiter.limit("5 per minute")
 def random_example(example_type):
@@ -754,28 +876,41 @@ def random_example(example_type):
             return jsonify({"text": text})
             
         elif example_type == "true":
-            resp = requests.get("https://www.ukrinform.ua/rubric-ato", headers=headers, timeout=5)
-            soup = BeautifulSoup(resp.text, "html.parser")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1',
+            }
+            # Спробуємо рубрику "Війна"
+            urls = ["https://www.ukrinform.ua/rubric-war", "https://www.ukrinform.ua/rubric-ato"]
             links = []
-            for a in soup.find_all("a"):
-                if a.has_attr("href") and "/rubric-ato/" in a["href"] and a["href"].endswith(".html"):
-                    url = a["href"]
-                    if not url.startswith("http"):
-                        url = "https://www.ukrinform.ua" + url
-                    if url not in links:
-                        links.append(url)
             
+            for target_url in urls:
+                try:
+                    resp = requests.get(target_url, headers=headers, timeout=7)
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        if ".html" in href and ("rubric-" in href or "/war-" in href):
+                            full_url = f"https://www.ukrinform.ua{href}" if href.startswith("/") else href
+                            if "ukrinform.ua" in full_url and full_url not in links:
+                                links.append(full_url)
+                except: continue
+                if links: break
+
             if not links:
-                return jsonify({"error": "Не знайдено посилань на Укрінформ"}), 404
+                return jsonify({"error": "Сайт новин тимчасово недоступний. Спробуйте StopFake."}), 404
                 
-            chosen_url = random.choice(links)
-            article_resp = requests.get(chosen_url, headers=headers, timeout=5)
+            chosen_url = random.choice(links[:20])
+            article_resp = requests.get(chosen_url, headers=headers, timeout=7)
             article_soup = BeautifulSoup(article_resp.text, "html.parser")
-            paragraphs = article_soup.find_all("p")
-            text = "\n".join(p.get_text() for p in paragraphs).strip()
-            if len(text) > 3000:
-                text = text[:3000] + "..."
-            return jsonify({"text": text})
+            
+            content_div = article_soup.find("div", class_="newsText") or article_soup.find("article")
+            paragraphs = content_div.find_all("p") if content_div else article_soup.find_all("p")
+            
+            text = "\n".join(p.get_text() for p in paragraphs if len(p.get_text()) > 30).strip()
+            if not text:
+                 return jsonify({"error": "Не вдалося витягнути текст. Спробуйте ще раз."}), 404
+            
+            return jsonify({"text": text[:3000]})
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -865,8 +1000,8 @@ def admin_panel():
     # gather details for feedbacks
     feedback_data = []
     for fb in feedbacks:
-        hist = CheckHistory.query.get(fb.history_id)
-        user = User.query.get(fb.user_id)
+        hist = db.session.get(CheckHistory, fb.history_id)
+        user = db.session.get(User, fb.user_id)
         if hist and user:
             feedback_data.append({
                 "id": fb.id,
@@ -876,7 +1011,41 @@ def admin_panel():
                 "date": fb.created_at
             })
 
-    return render_template("admin.html", users=users_count, checks=checks_count, feedbacks=feedback_data)
+    users_list_raw = User.query.order_by(User.last_active.desc().nullslast()).all()
+    user_data = []
+    now = datetime.utcnow()
+    for u in users_list_raw:
+        is_online = u.last_active and (now - u.last_active).total_seconds() < 300 # 5 min
+        user_data.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "is_admin": u.is_admin,
+            "last_active": u.last_active,
+            "is_online": is_online
+        })
+
+    return render_template("admin.html", 
+                         users=users_count, 
+                         checks=checks_count, 
+                         feedbacks=feedback_data,
+                         users_list=user_data)
+
+@app.route("/admin/kick/<int:user_id>", methods=["POST"])
+@login_required
+def kick_user(user_id):
+    if not current_user.is_admin:
+        abort(403)
+    user = db.session.get(User, user_id)
+    if user:
+        if user.id == current_user.id:
+            flash("Ви не можете вимкнути себе.", "error")
+        else:
+            user.is_active = not user.is_active # Перемикач
+            db.session.commit()
+            status = "деактивовано" if not user.is_active else "активовано"
+            flash(f"Користувача {user.username} {status}.", "success")
+    return redirect(url_for("admin_panel"))
 
 @app.route("/admin/export_feedback")
 @login_required
@@ -893,8 +1062,8 @@ def export_feedback():
     
     feedbacks = Feedback.query.all()
     for fb in feedbacks:
-        hist = CheckHistory.query.get(fb.history_id)
-        user = User.query.get(fb.user_id)
+        hist = db.session.get(CheckHistory, fb.history_id)
+        user = db.session.get(User, fb.user_id)
         if hist and user:
             writer.writerow([fb.id, user.email, fb.is_correct, hist.input_text, hist.fake_label, hist.prob_true, hist.theme, fb.created_at])
             
@@ -918,7 +1087,27 @@ def make_admin_command(email):
         print("User not found.")
 
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+        # Авто-міграція: додаємо колонки, якщо їх немає
+        from sqlalchemy import text
+
+        for col, col_type in [("last_active", "TIMESTAMP"), ("is_active", "BOOLEAN DEFAULT TRUE")]:
+            try:
+                db.session.execute(text(f'ALTER TABLE "user" ADD COLUMN {col} {col_type}'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        # Окремо активуємо існуючих юзерів, якщо вони NULL (це спрацює завжди)
+        try:
+            db.session.execute(text('UPDATE "user" SET is_active = TRUE WHERE is_active IS NULL'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    except Exception as db_init_error:
+        logger.exception("Database initialization failed: %s", db_init_error)
+
     print("=== ROUTES ===")
     for rule in app.url_map.iter_rules():
         print(f"{rule.endpoint} -> {rule.rule}")
