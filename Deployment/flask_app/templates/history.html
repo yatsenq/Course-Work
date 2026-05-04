@@ -1,44 +1,81 @@
-{% extends 'base.html' %}
-{% block title %}Історія · News AI{% endblock %}
-{% block content %}
+{% extends 'base.html' %} {% block title %}Історія · News AI{% endblock %} {%
+block content %}
 <div class="c">
-<div class="hist-act">
-<h2 style="font-size:16px">Історія перевірок</h2>
-<div style="display:flex;gap:6px">
-<a class="btn btn-s btn-sm" href="{{ url_for('dashboard') }}">← Аналіз</a>
-<form method="post" action="{{ url_for('clear_history') }}" onsubmit="return confirm('Очистити всю історію?')">
-<button type="submit" class="btn btn-d btn-sm">Очистити</button></form>
-</div>
-</div>
+	<div class="hist-act">
+		<h2 style="font-size: 16px">Історія перевірок</h2>
+		<div style="display: flex; gap: 6px">
+			<a class="btn btn-s btn-sm" href="{{ url_for('dashboard') }}">← Аналіз</a>
+			<form
+				method="post"
+				action="{{ url_for('clear_history') }}"
+				onsubmit="return confirm('Очистити всю історію?')"
+			>
+				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+				<button type="submit" class="btn btn-d btn-sm">Очистити</button>
+			</form>
+		</div>
+	</div>
 
-<form method="get" action="{{ url_for('history') }}" style="display: flex; gap: 8px; margin-bottom: 20px;">
-  <input type="text" name="q" placeholder="Пошук за текстом або темою..." value="{{ q }}" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--f); font-size: 14px;">
-  <button type="submit" class="btn btn-p btn-sm">Пошук</button>
-  {% if q %}<a href="{{ url_for('history') }}" class="btn btn-s btn-sm">Скинути</a>{% endif %}
-</form>
+	<form
+		method="get"
+		action="{{ url_for('history') }}"
+		style="display: flex; gap: 8px; margin-bottom: 20px"
+	>
+		<input
+			type="text"
+			name="q"
+			placeholder="Пошук за текстом або темою..."
+			value="{{ q }}"
+			style="
+				flex: 1;
+				padding: 8px;
+				border-radius: 6px;
+				border: 1px solid var(--border);
+				background: var(--bg);
+				color: var(--f);
+				font-size: 14px;
+			"
+		/>
+		<button type="submit" class="btn btn-p btn-sm">Пошук</button>
+		{% if q %}<a href="{{ url_for('history') }}" class="btn btn-s btn-sm"
+			>Скинути</a
+		>{% endif %}
+	</form>
 
-{% if history_items %}
-<div class="hist-list">
-{% for item in history_items %}
-<div class="hist-i">
-<div class="hist-top">
-<div><strong>{{ item.fake_label }}</strong> <span style="color:var(--t3)">{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div>
-<div class="hist-badges">
-<span class="tag">{{ item.theme }}</span>
-<span class="tag">TRUE {{ '%.0f'|format(item.prob_true * 100) }}%</span>
-<span class="tag">FAKE {{ '%.0f'|format(item.prob_fake * 100) }}%</span>
-</div>
-</div>
-<p style="-webkit-line-clamp:4">{{ item.input_text }}</p>
-<div class="hist-foot">
-<form method="post" action="{{ url_for('download_report') }}">
-<input type="hidden" name="history_id" value="{{ item.id }}">
-<button type="submit" class="btn btn-s btn-sm">📄 PDF</button>
-</form>
-</div>
-</div>
-{% endfor %}
-</div>
-{% else %}<p style="color:var(--t3);font-size:12px">Немає перевірок</p>{% endif %}
+	{% if history_items %}
+	<div class="hist-list">
+		{% for item in history_items %}
+		<div class="hist-i">
+			<div class="hist-top">
+				<div>
+					<strong>{{ item.fake_label }}</strong>
+					<span style="color: var(--t3)"
+						>{{ item.created_at.strftime('%d.%m.%Y %H:%M') }}</span
+					>
+				</div>
+				<div class="hist-badges">
+					<span class="tag">{{ item.theme }}</span>
+					<span class="tag"
+						>TRUE {{ '%.0f'|format(item.prob_true * 100) }}%</span
+					>
+					<span class="tag"
+						>FAKE {{ '%.0f'|format(item.prob_fake * 100) }}%</span
+					>
+				</div>
+			</div>
+			<p style="-webkit-line-clamp: 4">{{ item.input_text }}</p>
+			<div class="hist-foot">
+				<form method="post" action="{{ url_for('download_report') }}">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+					<input type="hidden" name="history_id" value="{{ item.id }}" />
+					<button type="submit" class="btn btn-s btn-sm">📄 PDF</button>
+				</form>
+			</div>
+		</div>
+		{% endfor %}
+	</div>
+	{% else %}
+	<p style="color: var(--t3); font-size: 12px">Немає перевірок</p>
+	{% endif %}
 </div>
 {% endblock %}

@@ -1,65 +1,116 @@
-{% extends 'base.html' %}
-{% block title %}Головна · News AI{% endblock %}
-{% block content %}
+{% extends 'base.html' %} {% block title %}Головна · News AI{% endblock %} {%
+block content %}
 <div class="c">
-<h1 class="land-t">Аналіз новин за один клік</h1>
-<p class="land-p">TRUE / FAKE, тема, маркери та PDF-звіт. ML-моделі для українських новин.</p>
-<div class="land-btns">
-<a class="btn btn-p" href="{{ url_for('dashboard') }}">Почати аналіз</a>
-{% if not current_user.is_authenticated %}<a class="btn btn-s" href="{{ url_for('guest') }}">Увійти як гість</a>{% endif %}
-</div>
-<div class="tags"><span class="tag">🔍 TRUE / FAKE</span><span class="tag">📰 Тема</span><span class="tag">📄 PDF</span><span class="tag">🤖 4 моделі</span></div>
+	<h1 class="land-t">Аналіз новин за один клік</h1>
+	<p class="land-p">
+		TRUE / FAKE, тема, маркери та PDF-звіт. ML-моделі для українських новин.
+	</p>
+	<div class="land-btns">
+		<a class="btn btn-p" href="{{ url_for('dashboard') }}">Почати аналіз</a>
+		{% if not current_user.is_authenticated %}<a
+			class="btn btn-s"
+			href="{{ url_for('guest') }}"
+			>Увійти як гість</a
+		>{% endif %}
+	</div>
+	<div class="tags">
+		<span class="tag">🔍 TRUE / FAKE</span><span class="tag">📰 Тема</span
+		><span class="tag">📄 PDF</span><span class="tag">🤖 4 моделі</span>
+	</div>
 </div>
 
 {% if stats and stats.total > 0 %}
-<div class="c" style="margin-bottom: 40px; margin-top: 20px;">
-  <h2 style="font-size:20px; margin-bottom:20px; text-align:center;">Глобальна аналітика платформи</h2>
-  <div style="display: flex; flex-direction: row; gap: 40px; align-items: center; justify-content: center; flex-wrap: wrap;">
-    <div style="width: 250px; height: 250px;">
-      <canvas id="themeChart"></canvas>
-    </div>
-    <div style="text-align: center; display: flex; flex-direction: column; gap: 20px;">
-      <div>
-        <strong style="font-size: 32px; color: var(--p);">{{ stats.total }}</strong>
-        <div style="font-size: 14px; color: var(--t2);">всього перевірок</div>
-      </div>
-      <div>
-        <strong style="font-size: 32px; color: var(--f);">{{ stats.global_today_fakes }}</strong>
-        <div style="font-size: 14px; color: var(--t2);">фейків знайдено сьогодні</div>
-      </div>
-    </div>
-  </div>
+<div class="c" style="margin-bottom: 40px; margin-top: 20px">
+	<h2 style="font-size: 20px; margin-bottom: 20px; text-align: center">
+		Глобальна аналітика платформи
+	</h2>
+	<div
+		style="
+			display: flex;
+			flex-direction: row;
+			gap: 40px;
+			align-items: center;
+			justify-content: center;
+			flex-wrap: wrap;
+		"
+	>
+		<div style="width: 250px; height: 250px">
+			<canvas id="themeChart"></canvas>
+		</div>
+		<div
+			style="
+				text-align: center;
+				display: flex;
+				flex-direction: column;
+				gap: 20px;
+			"
+		>
+			<div>
+				<strong style="font-size: 32px; color: var(--p)"
+					>{{ stats.total }}</strong
+				>
+				<div style="font-size: 14px; color: var(--t2)">всього перевірок</div>
+			</div>
+			<div>
+				<strong style="font-size: 32px; color: var(--f)"
+					>{{ stats.global_today_fakes }}</strong
+				>
+				<div style="font-size: 14px; color: var(--t2)">
+					фейків знайдено сьогодні
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const ctx = document.getElementById('themeChart');
-    if (ctx) {
-        new Chart(ctx.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: {{ stats.theme_labels | tojson | safe }},
-                datasets: [{
-                    data: {{ stats.theme_data | tojson | safe }},
-                    backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: {color: '#94a3b8'} } }
-            }
-        });
-    }
-});
+	document.addEventListener('DOMContentLoaded', () => {
+	    const ctx = document.getElementById('themeChart');
+	    if (ctx && typeof Chart !== 'undefined') {
+	        try {
+	            new Chart(ctx.getContext('2d'), {
+	                type: 'doughnut',
+	                data: {
+	                    labels: {{ stats.theme_labels | tojson | safe }},
+	                    datasets: [{
+	                        data: {{ stats.theme_data | tojson | safe }},
+	                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'],
+	                        borderWidth: 0
+	                    }]
+	                },
+	                options: {
+	                    responsive: true,
+	                    maintainAspectRatio: false,
+	                    plugins: { legend: { position: 'bottom', labels: {color: '#94a3b8'} } }
+	                }
+	            });
+	        } catch (e) {
+	            console.error('Chart initialization error:', e);
+	        }
+	    } else if (!ctx) {
+	        console.warn('themeChart canvas not found');
+	    } else {
+	        console.warn('Chart.js not loaded');
+	    }
+	});
 </script>
 {% endif %}
 
 <div class="feat">
-<div class="feat-i"><span>📝</span><p>Свій текст або готові приклади</p></div>
-<div class="feat-i"><span>🤖</span><p>TRUE / FAKE з відсотками від моделей</p></div>
-<div class="feat-i"><span>🏷️</span><p>Категорія та ключові маркери</p></div>
-<div class="feat-i"><span>📊</span><p>PDF-звіт та історія в акаунті</p></div>
+	<div class="feat-i">
+		<span>📝</span>
+		<p>Свій текст або готові приклади</p>
+	</div>
+	<div class="feat-i">
+		<span>🤖</span>
+		<p>TRUE / FAKE з відсотками від моделей</p>
+	</div>
+	<div class="feat-i">
+		<span>🏷️</span>
+		<p>Категорія та ключові маркери</p>
+	</div>
+	<div class="feat-i">
+		<span>📊</span>
+		<p>PDF-звіт та історія в акаунті</p>
+	</div>
 </div>
 {% endblock %}

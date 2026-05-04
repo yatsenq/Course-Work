@@ -1,58 +1,148 @@
-{% extends 'base.html' %}
-{% block title %}Адмін Панель · News AI{% endblock %}
+{% extends 'base.html' %} {% block title %}Адмін Панель · News AI{% endblock %}
 {% block content %}
 <div class="c">
-<h2>Панель Адміністратора</h2>
-<p>Статистика та управління платформою.</p>
+	<h2>Панель Адміністратора</h2>
+	<p>Статистика та управління платформою.</p>
 
-<div style="display:flex; gap: 20px; margin-top: 20px;">
-  <div style="background: var(--bg2); padding: 15px; border-radius: 8px; flex: 1;">
-    <h3 style="font-size: 24px; color: var(--p);">{{ users }}</h3>
-    <p style="color: var(--t2); font-size: 13px;">Зареєстрованих користувачів</p>
-  </div>
-  <div style="background: var(--bg2); padding: 15px; border-radius: 8px; flex: 1;">
-    <h3 style="font-size: 24px; color: var(--p);">{{ checks }}</h3>
-    <p style="color: var(--t2); font-size: 13px;">Загалом перевірок</p>
-  </div>
-</div>
+	<div style="display: flex; gap: 20px; margin-top: 20px">
+		<div
+			style="background: var(--bg2); padding: 15px; border-radius: 8px; flex: 1"
+		>
+			<h3 style="font-size: 24px; color: var(--p)">{{ users }}</h3>
+			<p style="color: var(--t2); font-size: 13px">
+				Зареєстрованих користувачів
+			</p>
+		</div>
+		<div
+			style="background: var(--bg2); padding: 15px; border-radius: 8px; flex: 1"
+		>
+			<h3 style="font-size: 24px; color: var(--p)">{{ checks }}</h3>
+			<p style="color: var(--t2); font-size: 13px">Загалом перевірок</p>
+		</div>
+	</div>
 
-<div style="margin-top: 30px;">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-    <h3>Останній Фідбек (Feedback)</h3>
-    <a href="{{ url_for('export_feedback') }}" class="btn btn-p btn-sm">⬇ Експорт у CSV</a>
-  </div>
-  {% if feedbacks %}
-  <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
-    <thead>
-      <tr style="border-bottom: 1px solid var(--border); text-align: left;">
-        <th style="padding: 10px;">ID</th>
-        <th style="padding: 10px;">Email</th>
-        <th style="padding: 10px;">Текст (уривок)</th>
-        <th style="padding: 10px;">Оцінка</th>
-        <th style="padding: 10px;">Дата</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for fb in feedbacks %}
-      <tr style="border-bottom: 1px solid var(--border);">
-        <td style="padding: 10px; color: var(--t2);">{{ fb.id }}</td>
-        <td style="padding: 10px;">{{ fb.email }}</td>
-        <td style="padding: 10px; color: var(--t2);">{{ fb.text }}</td>
-        <td style="padding: 10px;">
-          {% if fb.is_correct %}
-          <span style="color: var(--t);">👍 Згоден</span>
-          {% else %}
-          <span style="color: var(--f);">👎 Не згоден</span>
-          {% endif %}
-        </td>
-        <td style="padding: 10px; color: var(--t2);">{{ fb.date.strftime('%d.%m.%Y %H:%M') }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p style="color: var(--t2);">Фідбеків ще немає.</p>
-  {% endif %}
-</div>
+	<div style="margin-top: 30px">
+		<h3>Керування Користувачами</h3>
+		{% if users_list %}
+		<div class="tw">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>Ім'я</th>
+						<th>Email</th>
+						<th>Статус</th>
+						<th>Остання активність</th>
+						<th>Дії</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for u in users_list %}
+					<tr>
+						<td>{{ u.id }}</td>
+						<td><strong>{{ u.username }}</strong></td>
+						<td>{{ u.email }}</td>
+						<td>
+							{% if u.is_active %}
+							<span style="color: var(--ok)">Активний</span>
+							{% else %}
+							<span style="color: var(--no)">Деактивований</span>
+							{% endif %}
+							<br />
+							{% if u.is_online %}
+							<span style="color: var(--ok)">● Online</span>
+							{% else %}
+							<span style="color: var(--t3)">Offline</span>
+							{% endif %}
+						</td>
+						<td>
+							{{ u.last_active.strftime('%d.%m %H:%M') if u.last_active else
+							'Ніколи' }}
+						</td>
+						<td>
+							{% if u.id != current_user.id %}
+							<form
+								action="{{ url_for('kick_user', user_id=u.id) }}"
+								method="POST"
+								style="display: inline"
+							>
+								<input
+									type="hidden"
+									name="csrf_token"
+									value="{{ csrf_token() }}"
+								/>
+								<button
+									type="submit"
+									class="btn btn-{{ 'd' if u.is_active else 'p' }} btn-sm"
+									onclick="return confirm('Ви впевнені?')"
+								>
+									{{ 'Деактивувати' if u.is_active else 'Активувати' }}
+								</button>
+							</form>
+							{% else %}
+							<span style="color: var(--t3)">Поточний адмін</span>
+							{% endif %}
+						</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+		{% else %}
+		<p>Користувачів ще немає.</p>
+		{% endif %}
+	</div>
+
+	<div style="margin-top: 40px">
+		<div
+			style="
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 10px;
+			"
+		>
+			<h3>Останній Фідбек (Feedback)</h3>
+			<a href="{{ url_for('export_feedback') }}" class="btn btn-p btn-sm"
+				>⬇ Експорт у CSV</a
+			>
+		</div>
+		{% if feedbacks %}
+		<div class="tw">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>Email</th>
+						<th>Текст (уривок)</th>
+						<th>Оцінка</th>
+						<th>Дата</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for fb in feedbacks %}
+					<tr>
+						<td style="color: var(--t2)">{{ fb.id }}</td>
+						<td>{{ fb.email }}</td>
+						<td style="color: var(--t2)">{{ fb.text }}</td>
+						<td>
+							{% if fb.is_correct %}
+							<span style="color: var(--ok)">👍 Згоден</span>
+							{% else %}
+							<span style="color: var(--no)">👎 Не згоден</span>
+							{% endif %}
+						</td>
+						<td style="color: var(--t2)">
+							{{ fb.date.strftime('%d.%m.%Y %H:%M') }}
+						</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+		{% else %}
+		<p style="color: var(--t2)">Фідбеків ще немає.</p>
+		{% endif %}
+	</div>
 </div>
 {% endblock %}

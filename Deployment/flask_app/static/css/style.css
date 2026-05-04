@@ -185,9 +185,27 @@ tbody tr.row-f td:nth-child(3){color:var(--no);font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 @media(max-width:640px){
-  .wrap{width:100%;padding:0 10px}
-  .hdr-in{height:auto;padding:10px 0;flex-wrap:wrap}
-  nav{width:100%}
-  .feat,.ex-grid{grid-template-columns:1fr}
-  .v-row{flex-direction:column;align-items:stretch}
+  .wrap{width:100%;padding:0 12px}
+  .hdr{position:static;background:var(--bg)}
+  .hdr-in{height:auto;padding:16px 0;flex-direction:column;align-items:stretch;gap:12px;text-align:left}
+  nav{
+    width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px;
+    padding:10px 0;border-top:1px solid var(--b);
+  }
+  nav a,.nav-u{
+    min-width:0;padding:12px 8px;font-size:13px;text-align:center;
+    background:var(--card2);border:1px solid var(--b);
+    border-radius:10px;color:var(--t)!important;
+  }
+  .btn-theme{background:transparent;border:none;cursor:pointer;font-size:18px;padding:8px}
+  
+  /* Simplified Mobile Dashboard */
+  .dash-grid{display:flex;flex-direction:column;gap:16px}
+  .res-card{padding:16px;font-size:14px}
+  .vb,.tb{font-size:14px;padding:6px 12px;width:100%;text-align:center}
+  .cf{min-width:0;width:100%}
+  textarea{min-height:140px;font-size:14px}
+  .land-t{font-size:22px}
+  .main{padding-top:10px}
+  .logo{justify-content:center;margin-bottom:4px}
 }

@@ -1,207 +1,408 @@
-{% extends 'base.html' %}
-{% block title %}Аналіз · News AI{% endblock %}
-{% block content %}
+{% extends 'base.html' %} {% block title %}Аналіз · News AI{% endblock %} {%
+block content %}
 
 <div class="dash-grid">
-<div class="dash-left">
+	<div class="dash-left">
+		<div class="c">
+			<h2 style="font-size: 17px; margin-bottom: 10px">
+				Текст новини або посилання (URL)
+			</h2>
+			<form method="post" class="form-row" id="af">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+				<textarea
+					id="nt"
+					name="news_text"
+					placeholder="Встав сюди текст новини або URL-посилання для аналізу…"
+				>
+{{ text }}</textarea
+				>
+				<div class="form-act">
+					<button type="submit" class="btn btn-p" id="sb">Аналіз</button>
+					<button type="button" class="btn btn-s" id="cb">Очистити</button>
+				</div>
+			</form>
+			<div class="ex-title">Випадкові приклади (Парсинг реальних новин)</div>
+			<div class="ex-grid">
+				<button type="button" class="ex-btn" id="btn-ex-fake">
+					<strong>Фейк (StopFake)</strong><small>Завантажити текст</small>
+				</button>
+				<button type="button" class="ex-btn" id="btn-ex-true">
+					<strong>Правда (Укрінформ)</strong><small>Завантажити текст</small>
+				</button>
+			</div>
+		</div>
 
-<div class="c">
-<h2 style="font-size:17px;margin-bottom:10px">Текст новини або посилання (URL)</h2>
-<form method="post" class="form-row" id="af">
-<textarea id="nt" name="news_text" placeholder="Встав сюди текст новини або URL-посилання для аналізу…">{{ text }}</textarea>
-<div class="form-act">
-<button type="submit" class="btn btn-p" id="sb">Аналіз</button>
-<button type="button" class="btn btn-s" id="cb">Очистити</button>
-</div>
-</form>
-<div class="ex-title">Випадкові приклади (Парсинг реальних новин)</div>
-<div class="ex-grid">
-<button type="button" class="ex-btn" id="btn-ex-fake"><strong>Фейк (StopFake)</strong><small>Завантажити текст</small></button>
-<button type="button" class="ex-btn" id="btn-ex-true"><strong>Правда (Укрінформ)</strong><small>Завантажити текст</small></button>
-</div>
-</div>
+		{% if result and result.fake_markers %}
+		<div class="c" style="margin-bottom: 20px">
+			<h3 style="font-size: 15px; margin-bottom: 10px">
+				Аналіз тексту (Highlighting)
+			</h3>
+			<p style="font-size: 13px; color: var(--t2); margin-bottom: 8px">
+				Зеленим підсвічені слова, що характерні для правдивих новин, червоним —
+				для фейків.
+			</p>
+			<div
+				id="highlighted-text"
+				style="
+					font-size: 14px;
+					line-height: 1.6;
+					padding: 10px;
+					background: var(--bg2);
+					border-radius: 8px;
+					white-space: pre-wrap;
+				"
+			>
+				{{ result.input_text }}
+			</div>
+			<script>
+				document.addEventListener('DOMContentLoaded', () => {
+				    const markers = {{ result.fake_markers | tojson | safe }};
+				    const el = document.getElementById('highlighted-text');
+				    let html = el.textContent;
+				    markers.forEach(m => {
+				        // LogReg negative coef -> FAKE, positive -> TRUE
+				        const color = m.score < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)';
+				        // escape regex chars
+				        const keyword = m.keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+				        const regex = new RegExp(`(?<![а-яА-Яіїєґ])(${keyword})(?![а-яА-Яіїєґ])`, 'gi');
+				        html = html.replace(regex, `<span style="background-color: ${color}; padding: 0 2px; border-radius: 3px;">$1</span>`);
+				    });
+				    el.innerHTML = html;
+				});
+			</script>
+		</div>
+		{% endif %}
+	</div>
+	<div class="dash-right">
+		{% if result %}
+		<div class="res-stack">
+			<div class="c res-card anim-in">
+				<div class="v-row">
+					<div>
+						<div
+							class="vb vb-{{ 't' if result.fake_label == 'TRUE' else 'f' }}"
+						>
+							{{ result.fake_label }}
+						</div>
+					</div>
+					<div class="cf">
+						<strong>{{ '%.1f'|format(result.fake_confidence * 100) }}%</strong
+						><span>впевненість</span>
+					</div>
+				</div>
+				<div class="meter-g">
+					<div class="mr">
+						<div class="mr-top">
+							<span>TRUE</span
+							><strong>{{ '%.1f'|format(result.prob_true * 100) }}%</strong>
+						</div>
+						<div class="meter">
+							<span style="width:{{ result.prob_true * 100 }}%"></span>
+						</div>
+					</div>
+					<div class="mr">
+						<div class="mr-top">
+							<span>FAKE</span
+							><strong>{{ '%.1f'|format(result.prob_fake * 100) }}%</strong>
+						</div>
+						<div class="meter">
+							<span style="width:{{ result.prob_fake * 100 }}%"></span>
+						</div>
+					</div>
+				</div>
 
+				{% if result.per_model_results %}
+				<button
+					type="button"
+					class="btn btn-s btn-sm detail-toggle"
+					id="dt-model"
+					style="margin-top: 15px"
+				>
+					Результати моделей
+				</button>
+				<div class="detail-box hidden" id="dp-model" style="margin-top: 10px">
+					<div class="tw">
+						<table>
+							<thead>
+								<tr>
+									<th style="text-align: left">Модель</th>
+									<th style="text-align: left">Завдання</th>
+									<th style="text-align: left">Результат</th>
+									<th style="text-align: right">Впевненість</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for m in result.per_model_results %}
+								<tr
+									class="row-{{ 't' if (m.task == 'fake' and m.fake_label == 'TRUE') else 'f' }}"
+								>
+									<td style="text-align: left">{{ m.name }}</td>
+									<td style="text-align: left">{{ m.task }}</td>
+									<td style="text-align: left">
+										{% if m.task == 'fake' %}<strong>{{ m.fake_label }}</strong
+										>{% else %}{{ m.theme }}{% endif %}
+									</td>
+									<td style="text-align: right">
+										{% if m.task == 'fake' %}{{ '%.1f'|format(m.fake_confidence
+										* 100) }}%{% else %}{{ '%.1f'|format(m.theme_confidence *
+										100) }}%{% endif %}
+									</td>
+								</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+				{% endif %}
 
+				<form
+					method="post"
+					action="{{ url_for('download_report') }}"
+					style="margin-top: 15px"
+				>
+					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+					<input
+						type="hidden"
+						name="analysis_json"
+						value="{{ result | tojson | forceescape }}"
+					/>
+					<button type="submit" class="btn btn-s btn-sm">
+						📄 Завантажити PDF
+					</button>
+				</form>
+				{% if current_user.is_authenticated and result.history_id %}
+				<div
+					style="
+						margin-top: 10px;
+						border-top: 1px solid var(--border);
+						padding-top: 10px;
+					"
+					id="feedback-container"
+				>
+					<p style="font-size: 13px; color: var(--t2); margin-bottom: 6px">
+						Чи згодні ви з результатом?
+					</p>
+					<form
+						method="post"
+						action="{{ url_for('submit_feedback', history_id=result.history_id) }}"
+						id="feedback-form"
+						style="display: flex; gap: 8px"
+					>
+						<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+						<button
+							type="submit"
+							name="is_correct"
+							value="1"
+							class="btn btn-s btn-sm"
+						>
+							👍 Згоден
+						</button>
+						<button
+							type="submit"
+							name="is_correct"
+							value="0"
+							class="btn btn-d btn-sm"
+						>
+							👎 Не згоден
+						</button>
+					</form>
+				</div>
+				<script>
+					document
+						.getElementById('feedback-form')
+						?.addEventListener('submit', function (e) {
+							e.preventDefault()
+							const formData = new FormData(this)
+							formData.append('is_correct', e.submitter.value)
+							fetch(this.action, {
+								method: 'POST',
+								body: formData,
+								headers: { Fetch: 'true' },
+							}).then(() => {
+								document.getElementById('feedback-container').innerHTML =
+									'<p style="color:var(--t2);font-size:13px;font-weight:500;">Дякуємо за відгук! Це допоможе покращити систему.</p>'
+							})
+						})
+				</script>
+				{% endif %}
+			</div>
 
-{% if result and result.fake_markers %}
-<div class="c" style="margin-bottom: 20px;">
-<h3 style="font-size:15px; margin-bottom:10px">Аналіз тексту (Highlighting)</h3>
-<p style="font-size: 13px; color: var(--t2); margin-bottom: 8px;">Зеленим підсвічені слова, що характерні для правдивих новин, червоним — для фейків.</p>
-<div id="highlighted-text" style="font-size: 14px; line-height: 1.6; padding: 10px; background: var(--bg2); border-radius: 8px; white-space: pre-wrap;">
-{{ result.input_text }}
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const markers = {{ result.fake_markers | tojson | safe }};
-    const el = document.getElementById('highlighted-text');
-    let html = el.textContent;
-    markers.forEach(m => {
-        // LogReg negative coef -> FAKE, positive -> TRUE
-        const color = m.score < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)';
-        // escape regex chars
-        const keyword = m.keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const regex = new RegExp(`(?<![а-яА-Яіїєґ])(${keyword})(?![а-яА-Яіїєґ])`, 'gi');
-        html = html.replace(regex, `<span style="background-color: ${color}; padding: 0 2px; border-radius: 3px;">$1</span>`);
-    });
-    el.innerHTML = html;
-});
-</script>
-</div>
-{% endif %}
+			<div class="c res-card anim-in">
+				<div class="v-row">
+					<div class="tb">{{ result.theme }}</div>
+					<div class="cf">
+						<strong>{{ '%.1f'|format(result.theme_confidence * 100) }}%</strong
+						><span>тема</span>
+					</div>
+				</div>
+				<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt">
+					Деталі теми
+				</button>
+				<div class="detail-box hidden" id="dp">
+					<div class="meter-g" style="margin-bottom: 10px">
+						{% for item in result.theme_distribution %}
+						<div class="mr">
+							<div class="mr-top">
+								<span>{{ item.theme }}</span
+								><strong>{{ '%.1f'|format(item.probability * 100) }}%</strong>
+							</div>
+							<div class="meter">
+								<span style="width:{{ item.probability * 100 }}%"></span>
+							</div>
+						</div>
+						{% endfor %}
+					</div>
+					{% if result.theme_markers %}
+					<div style="font-size: 13px; font-weight: 600; margin-bottom: 6px">
+						Маркери
+					</div>
+					<div class="mk-cloud">
+						{% for m in result.theme_markers %}<span class="mk"
+							>{{ m.keyword }}<small>{{ '%.3f'|format(m.score) }}</small></span
+						>{% endfor %}
+					</div>
+					{% endif %}
+				</div>
+			</div>
+			<div
+				style="
+					margin-top: 15px;
+					font-size: 12px;
+					color: var(--t3);
+					display: flex;
+					align-items: flex-start;
+					gap: 8px;
+					background: var(--bg2);
+					padding: 10px;
+					border-radius: 6px;
+				"
+			>
+				<span style="font-size: 16px">⚠️</span>
+				<p style="margin: 0; text-align: left; line-height: 1.4">
+					<strong>Увага:</strong> Результати аналізу генеруються алгоритмами
+					машинного навчання (ШІ) та не є 100% гарантією достовірності.
+					Платформа є допоміжним інструментом і не може замінити критичне
+					мислення та професійний фактчекінг.
+				</p>
+			</div>
+		</div>
 
-
-
-</div>
-<div class="dash-right">
-
-{% if result %}
-<div class="res-stack">
-<div class="c res-card anim-in">
-<div class="v-row">
-<div><div class="vb vb-{{ 't' if result.fake_label == 'TRUE' else 'f' }}">{{ result.fake_label }}</div></div>
-<div class="cf"><strong>{{ '%.1f'|format(result.fake_confidence * 100) }}%</strong><span>впевненість</span></div>
-</div>
-<div class="meter-g">
-<div class="mr"><div class="mr-top"><span>TRUE</span><strong>{{ '%.1f'|format(result.prob_true * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_true * 100 }}%"></span></div></div>
-<div class="mr"><div class="mr-top"><span>FAKE</span><strong>{{ '%.1f'|format(result.prob_fake * 100) }}%</strong></div><div class="meter"><span style="width:{{ result.prob_fake * 100 }}%"></span></div></div>
-</div>
-
-{% if result.per_model_results %}
-<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt-model" style="margin-top: 15px;">Результати моделей</button>
-<div class="detail-box hidden" id="dp-model" style="margin-top: 10px;">
-<div class="tw"><table>
-<thead><tr><th style="text-align:left">Модель</th><th style="text-align:left">Завдання</th><th style="text-align:left">Результат</th><th style="text-align:right">Впевненість</th></tr></thead>
-<tbody>
-{% for m in result.per_model_results %}
-<tr class="row-{{ 't' if (m.task == 'fake' and m.fake_label == 'TRUE') else 'f' }}">
-<td style="text-align:left">{{ m.name }}</td><td style="text-align:left">{{ m.task }}</td>
-<td style="text-align:left">{% if m.task == 'fake' %}<strong>{{ m.fake_label }}</strong>{% else %}{{ m.theme }}{% endif %}</td>
-<td style="text-align:right">{% if m.task == 'fake' %}{{ '%.1f'|format(m.fake_confidence * 100) }}%{% else %}{{ '%.1f'|format(m.theme_confidence * 100) }}%{% endif %}</td>
-</tr>{% endfor %}
-</tbody></table></div>
-</div>
-{% endif %}
-
-<form method="post" action="{{ url_for('download_report') }}" style="margin-top: 15px;">
-<input type="hidden" name="analysis_json" value="{{ result | tojson | forceescape }}">
-<button type="submit" class="btn btn-s btn-sm">📄 Завантажити PDF</button>
-</form>
-{% if current_user.is_authenticated and result.history_id %}
-<div style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;" id="feedback-container">
-  <p style="font-size: 13px; color: var(--t2); margin-bottom: 6px;">Чи згодні ви з результатом?</p>
-  <form method="post" action="{{ url_for('submit_feedback', history_id=result.history_id) }}" id="feedback-form" style="display: flex; gap: 8px;">
-    <button type="submit" name="is_correct" value="1" class="btn btn-s btn-sm">👍 Згоден</button>
-    <button type="submit" name="is_correct" value="0" class="btn btn-d btn-sm">👎 Не згоден</button>
-  </form>
-</div>
-<script>
-document.getElementById('feedback-form')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    formData.append('is_correct', e.submitter.value);
-    fetch(this.action, { method: 'POST', body: formData, headers: {'Fetch': 'true'} })
-      .then(() => {
-          document.getElementById('feedback-container').innerHTML = '<p style="color:var(--t2);font-size:13px;font-weight:500;">Дякуємо за відгук! Це допоможе покращити систему.</p>';
-      });
-});
-</script>
-{% endif %}
-</div>
-
-<div class="c res-card anim-in">
-<div class="v-row">
-<div class="tb">{{ result.theme }}</div>
-<div class="cf"><strong>{{ '%.1f'|format(result.theme_confidence * 100) }}%</strong><span>тема</span></div>
-</div>
-<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt">Деталі теми</button>
-<div class="detail-box hidden" id="dp">
-<div class="meter-g" style="margin-bottom:10px">
-{% for item in result.theme_distribution %}
-<div class="mr"><div class="mr-top"><span>{{ item.theme }}</span><strong>{{ '%.1f'|format(item.probability * 100) }}%</strong></div><div class="meter"><span style="width:{{ item.probability * 100 }}%"></span></div></div>
-{% endfor %}
-</div>
-{% if result.theme_markers %}
-<div style="font-size:13px;font-weight:600;margin-bottom:6px">Маркери</div>
-<div class="mk-cloud">{% for m in result.theme_markers %}<span class="mk">{{ m.keyword }}<small>{{ '%.3f'|format(m.score) }}</small></span>{% endfor %}</div>
-{% endif %}
-</div>
-</div>
-<div style="margin-top: 15px; font-size: 12px; color: var(--t3); display: flex; align-items: flex-start; gap: 8px; background: var(--bg2); padding: 10px; border-radius: 6px;">
-  <span style="font-size: 16px;">⚠️</span>
-  <p style="margin: 0; text-align: left; line-height: 1.4;"><strong>Увага:</strong> Результати аналізу генеруються алгоритмами машинного навчання (ШІ) та не є 100% гарантією достовірності. Платформа є допоміжним інструментом і не може замінити критичне мислення та професійний фактчекінг.</p>
-</div>
-</div>
-
-{% else %}
-<div class="c ph"><strong>Результат з'явиться тут</strong>Введіть текст новини або вставте посилання та натисніть «Аналіз»</div>
-{% endif %}
-
-</div>
+		{% else %}
+		<div class="c ph">
+			<strong>Результат з'явиться тут</strong>Введіть текст новини або вставте
+			посилання та натисніть «Аналіз»
+		</div>
+		{% endif %}
+	</div>
 </div>
 
 <style>
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-.skel { background: var(--bg2); border-radius: 4px; animation: pulse 1.5s infinite ease-in-out; }
+	@keyframes pulse {
+		0% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
+		100% {
+			opacity: 1;
+		}
+	}
+	.skel {
+		background: var(--bg2);
+		border-radius: 4px;
+		animation: pulse 1.5s infinite ease-in-out;
+	}
 </style>
 
 <script>
-function loadRandomExample(type, btn) {
-    const ta = document.getElementById('nt');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<strong>Завантажую...</strong><small>Зачекайте</small>';
-    btn.disabled = true;
-    
-    fetch('/api/random_example/' + type)
-        .then(res => {
-            if (res.status === 429) {
-                throw new Error('429');
-            }
-            return res.json();
-        })
-        .then(data => {
-            if (data.text) {
-                ta.value = data.text;
-                ta.focus();
-            } else {
-                alert('Помилка завантаження: ' + data.error);
-            }
-        })
-        .catch(e => {
-            if (e.message === '429') {
-                alert('Забагато запитів! Будь ласка, зачекайте хвилинку перед наступною спробою.');
-            } else {
-                alert('Помилка мережі: ' + e.message);
-            }
-        })
-        .finally(() => {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        });
-}
+	function loadRandomExample(type, btn) {
+		const ta = document.getElementById('nt')
+		const originalText = btn.innerHTML
+		btn.innerHTML = '<strong>Завантажую...</strong><small>Зачекайте</small>'
+		btn.disabled = true
 
-document.addEventListener('DOMContentLoaded',()=>{
-const ta=document.getElementById('nt'),f=document.getElementById('af');
-document.getElementById('cb')?.addEventListener('click',()=>{ta.value='';ta.focus()});
-document.getElementById('btn-ex-fake')?.addEventListener('click', function() { loadRandomExample('fake', this); });
-document.getElementById('btn-ex-true')?.addEventListener('click', function() { loadRandomExample('true', this); });
+		fetch('/api/random_example/' + type)
+			.then(res => {
+				if (res.status === 429) {
+					throw new Error('429')
+				}
+				return res.json()
+			})
+			.then(data => {
+				if (data.text) {
+					ta.value = data.text
+					ta.focus()
+				} else {
+					alert('Помилка завантаження: ' + data.error)
+				}
+			})
+			.catch(e => {
+				if (e.message === '429') {
+					alert(
+						'Забагато запитів! Будь ласка, зачекайте хвилинку перед наступною спробою.',
+					)
+				} else {
+					alert('Помилка мережі: ' + e.message)
+				}
+			})
+			.finally(() => {
+				btn.innerHTML = originalText
+				btn.disabled = false
+			})
+	}
 
-document.getElementById('dt')?.addEventListener('click',function(){
-const d=document.getElementById('dp');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Деталі теми':'Сховати'});
-document.getElementById('dt-model')?.addEventListener('click',function(){
-const d=document.getElementById('dp-model');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Результати моделей':'Сховати результати'});
+	document.addEventListener('DOMContentLoaded', () => {
+		const ta = document.getElementById('nt'),
+			f = document.getElementById('af')
+		document.getElementById('cb')?.addEventListener('click', () => {
+			ta.value = ''
+			ta.focus()
+		})
+		document
+			.getElementById('btn-ex-fake')
+			?.addEventListener('click', function () {
+				loadRandomExample('fake', this)
+			})
+		document
+			.getElementById('btn-ex-true')
+			?.addEventListener('click', function () {
+				loadRandomExample('true', this)
+			})
 
-f?.addEventListener('submit',()=>{
-    if(!ta.value.trim()) return;
-    const btn = document.getElementById('sb');
-    if(btn) btn.innerHTML = 'Аналізую...';
-    
-    const rightPanel = document.querySelector('.dash-right');
-    if (rightPanel) {
-        rightPanel.innerHTML = `
+		const toggleDetails = (btnId, panelId, labelOn, labelOff) => {
+			const btn = document.getElementById(btnId)
+			const panel = document.getElementById(panelId)
+			if (!btn || !panel) return
+			const handler = e => {
+				if (e.type === 'touchstart') {
+					e.preventDefault()
+				}
+				panel.classList.toggle('hidden')
+				btn.textContent = panel.classList.contains('hidden')
+					? labelOn
+					: labelOff
+			}
+			btn.addEventListener('click', handler)
+			btn.addEventListener('touchstart', handler, { passive: false })
+		}
+
+		toggleDetails('dt', 'dp', 'Деталі теми', 'Сховати')
+		toggleDetails(
+			'dt-model',
+			'dp-model',
+			'Результати моделей',
+			'Сховати результати',
+		)
+
+		f?.addEventListener('submit', () => {
+			if (!ta.value.trim()) return
+			const btn = document.getElementById('sb')
+			if (btn) btn.innerHTML = 'Аналізую...'
+
+			const rightPanel = document.querySelector('.dash-right')
+			if (rightPanel) {
+				rightPanel.innerHTML = `
           <div class="c res-card" style="border: 1px solid var(--border);">
             <div class="skel" style="height: 24px; width: 60%; margin-bottom: 20px;"></div>
             <div class="skel" style="height: 14px; width: 100%; margin-bottom: 10px;"></div>
@@ -212,9 +413,9 @@ f?.addEventListener('submit',()=>{
             <div class="skel" style="height: 24px; width: 40%; margin-bottom: 20px;"></div>
             <div class="skel" style="height: 150px; width: 100%;"></div>
           </div>
-        `;
-    }
-});
-});
+        `
+			}
+		})
+	})
 </script>
 {% endblock %}
