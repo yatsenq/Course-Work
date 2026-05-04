@@ -1020,6 +1020,7 @@ def admin_panel():
             "id": u.id,
             "username": u.username,
             "email": u.email,
+            "is_active": bool(u.is_active),
             "is_admin": u.is_admin,
             "last_active": u.last_active,
             "is_online": is_online
@@ -1041,7 +1042,11 @@ def kick_user(user_id):
         if user.id == current_user.id:
             flash("Ви не можете вимкнути себе.", "error")
         else:
-            user.is_active = not user.is_active # Перемикач
+            target_active_raw = request.form.get("target_active")
+            if target_active_raw in {"0", "1"}:
+                user.is_active = target_active_raw == "1"
+            else:
+                user.is_active = not user.is_active
             db.session.commit()
             status = "деактивовано" if not user.is_active else "активовано"
             flash(f"Користувача {user.username} {status}.", "success")

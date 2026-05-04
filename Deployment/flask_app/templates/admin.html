@@ -71,6 +71,11 @@
 									name="csrf_token"
 									value="{{ csrf_token() }}"
 								/>
+								<input
+									type="hidden"
+									name="target_active"
+									value="{{ '0' if u.is_active else '1' }}"
+								/>
 								<button
 									type="submit"
 									class="btn btn-{{ 'd' if u.is_active else 'p' }} btn-sm"
