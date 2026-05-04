@@ -701,6 +701,66 @@ def dashboard():
     )
 
 
+@app.route("/api/random_example/<example_type>")
+@limiter.limit("5 per minute")
+def random_example(example_type):
+    import random
+    import requests
+    from bs4 import BeautifulSoup
+    from flask import jsonify
+
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if example_type == "fake":
+            resp = requests.get("https://www.stopfake.org/uk/golovna/", headers=headers, timeout=5)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            links = []
+            for a in soup.find_all("a"):
+                if a.has_attr("href") and ("/uk/fejk-" in a["href"] or "/uk/manipulyatsiya-" in a["href"] or "/uk/fotofejk-" in a["href"]):
+                    links.append(a["href"])
+            
+            if not links:
+                return jsonify({"error": "Не знайдено посилань на StopFake"}), 404
+            
+            chosen_url = random.choice(links)
+            article_resp = requests.get(chosen_url, headers=headers, timeout=5)
+            article_soup = BeautifulSoup(article_resp.text, "html.parser")
+            content_div = article_soup.find("div", class_="entry-content")
+            paragraphs = content_div.find_all("p") if content_div else article_soup.find_all("p")
+            text = "\n".join(p.get_text() for p in paragraphs).strip()
+            
+            text = text.split("Більше спростувань")[0].strip()
+            if len(text) > 3000:
+                text = text[:3000] + "..."
+            return jsonify({"text": text})
+            
+        elif example_type == "true":
+            resp = requests.get("https://www.ukrinform.ua/rubric-ato", headers=headers, timeout=5)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            links = []
+            for a in soup.find_all("a"):
+                if a.has_attr("href") and "/rubric-ato/" in a["href"] and a["href"].endswith(".html"):
+                    url = a["href"]
+                    if not url.startswith("http"):
+                        url = "https://www.ukrinform.ua" + url
+                    if url not in links:
+                        links.append(url)
+            
+            if not links:
+                return jsonify({"error": "Не знайдено посилань на Укрінформ"}), 404
+                
+            chosen_url = random.choice(links)
+            article_resp = requests.get(chosen_url, headers=headers, timeout=5)
+            article_soup = BeautifulSoup(article_resp.text, "html.parser")
+            paragraphs = article_soup.find_all("p")
+            text = "\n".join(p.get_text() for p in paragraphs).strip()
+            if len(text) > 3000:
+                text = text[:3000] + "..."
+            return jsonify({"text": text})
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/history")
 @login_required
 def history():
