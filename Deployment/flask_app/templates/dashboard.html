@@ -14,14 +14,11 @@
 <button type="button" class="btn btn-s" id="cb">Очистити</button>
 </div>
 </form>
-{% if examples %}
-<div class="ex-title">Приклади</div>
+<div class="ex-title">Випадкові приклади (Парсинг реальних новин)</div>
 <div class="ex-grid">
-{% for ex in examples %}
-<button type="button" class="ex-btn" data-ex="{{ ex.text|e }}"><strong>{{ ex.title }}</strong><small>Підставити</small></button>
-{% endfor %}
+<button type="button" class="ex-btn" id="btn-ex-fake"><strong>Фейк (StopFake)</strong><small>Завантажити текст</small></button>
+<button type="button" class="ex-btn" id="btn-ex-true"><strong>Правда (Укрінформ)</strong><small>Завантажити текст</small></button>
 </div>
-{% endif %}
 </div>
 
 
@@ -129,6 +126,10 @@ document.getElementById('feedback-form')?.addEventListener('submit', function(e)
 {% endif %}
 </div>
 </div>
+<div style="margin-top: 15px; font-size: 12px; color: var(--t3); display: flex; align-items: flex-start; gap: 8px; background: var(--bg2); padding: 10px; border-radius: 6px;">
+  <span style="font-size: 16px;">⚠️</span>
+  <p style="margin: 0; text-align: left; line-height: 1.4;"><strong>Увага:</strong> Результати аналізу генеруються алгоритмами машинного навчання (ШІ) та не є 100% гарантією достовірності. Платформа є допоміжним інструментом і не може замінити критичне мислення та професійний фактчекінг.</p>
+</div>
 </div>
 
 {% else %}
@@ -148,10 +149,46 @@ document.getElementById('feedback-form')?.addEventListener('submit', function(e)
 </style>
 
 <script>
+function loadRandomExample(type, btn) {
+    const ta = document.getElementById('nt');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<strong>Завантажую...</strong><small>Зачекайте</small>';
+    btn.disabled = true;
+    
+    fetch('/api/random_example/' + type)
+        .then(res => {
+            if (res.status === 429) {
+                throw new Error('429');
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (data.text) {
+                ta.value = data.text;
+                ta.focus();
+            } else {
+                alert('Помилка завантаження: ' + data.error);
+            }
+        })
+        .catch(e => {
+            if (e.message === '429') {
+                alert('Забагато запитів! Будь ласка, зачекайте хвилинку перед наступною спробою.');
+            } else {
+                alert('Помилка мережі: ' + e.message);
+            }
+        })
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+
 document.addEventListener('DOMContentLoaded',()=>{
 const ta=document.getElementById('nt'),f=document.getElementById('af');
 document.getElementById('cb')?.addEventListener('click',()=>{ta.value='';ta.focus()});
-document.querySelectorAll('[data-ex]').forEach(b=>b.addEventListener('click',()=>{ta.value=b.dataset.ex;ta.focus()}));
+document.getElementById('btn-ex-fake')?.addEventListener('click', function() { loadRandomExample('fake', this); });
+document.getElementById('btn-ex-true')?.addEventListener('click', function() { loadRandomExample('true', this); });
+
 document.getElementById('dt')?.addEventListener('click',function(){
 const d=document.getElementById('dp');d.classList.toggle('hidden');this.textContent=d.classList.contains('hidden')?'Деталі теми':'Сховати'});
 document.getElementById('dt-model')?.addEventListener('click',function(){
