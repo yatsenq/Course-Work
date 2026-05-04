@@ -718,15 +718,25 @@ def load_selected_models(model_base_dir: str) -> dict[str, Any]:
             topic_le = None
 
         # --- shared helpers ---------------------------------------------------
-        stopwords_path = base / "Models" / "stopwords_ua.txt"
-        with open(stopwords_path, "r", encoding="utf-8") as f:
-            stopwords = set(f.read().split())
+        # Шукаємо стоп-слова в декількох місцях для гнучкості
+        stopwords_candidates = [
+            base / "stopwords_ua.txt",
+            exp / "stopwords_ua.txt",
+            base / "Models" / "stopwords_ua.txt"
+        ]
+        stopwords_path = next((p for p in stopwords_candidates if p.exists()), stopwords_candidates[0])
+        
+        try:
+            with open(stopwords_path, "r", encoding="utf-8") as f:
+                stopwords = set(f.read().split())
+        except Exception:
+            stopwords = set()
+            
         morph = pymorphy3.MorphAnalyzer(lang="uk")
 
-        with open(base / "Models" / "THEME" / "theme_vectorizer.pkl", "rb") as f:
-            theme_vectorizer = pickle.load(f)
-        with open(base / "Models" / "THEME" / "theme_model.pkl", "rb") as f:
-            theme_model = pickle.load(f)
+        # Використовуємо SVM з експерименту 05 як основну модель для маркерів тем
+        theme_vectorizer = svm_vec
+        theme_model = svm_model
 
         resources = {
             "device": device, "tokenizer": tokenizer,

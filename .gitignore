@@ -21,3 +21,6 @@ __pycache__/
 !.env.example
 
 Deployment/flask_app/instance/site.db
+Documents/coursework_data.md
+Documents/system_architecture.md
+Documents/use_case_diagram.md

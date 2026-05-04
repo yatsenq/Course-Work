@@ -137,7 +137,26 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-MODEL_BASE_DIR = os.getenv("MODEL_BASE_DIR", str(Path(__file__).resolve().parents[2]))
+def get_model_base_dir():
+    # 1. Environment variable
+    env_val = os.getenv("MODEL_BASE_DIR")
+    if env_val:
+        return env_val
+    
+    # 2. Look in current directory (if models are uploaded to same root)
+    current = Path(__file__).resolve().parent
+    if (current / "Models").exists():
+        return str(current)
+        
+    # 3. Look two levels up (original local structure: Course Work/Deployment/flask_app/app.py)
+    two_up = current.parents[1] if len(current.parents) > 1 else current
+    if (two_up / "Models").exists():
+        return str(two_up)
+    
+    # 4. Fallback to current
+    return str(current)
+
+MODEL_BASE_DIR = get_model_base_dir()
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
