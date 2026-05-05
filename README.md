@@ -27,8 +27,8 @@ The system uses a **distributed deployment model** to optimize resources:
 ## 🚀 Installation & Local Run
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yatsenq/coursework-fake-news-detector.git
-   cd coursework-fake-news-detector/Deployment/flask_app
+   git clone https://github.com/yatsenq/Course-Work.git
+   cd Course-Work/Deployment/flask_app
    ```
 2. Install dependencies:
    ```bash
@@ -47,6 +47,7 @@ The system uses a **distributed deployment model** to optimize resources:
 | mBERT (Head C) | **92.9%** | **0.929** |
 | Logistic Regression | 84.1% | 0.837 |
 | SVM (Topic) | 96.7% | 0.967 |
+| mBERT (Topic) | 97.72% | 0.9772 |
 
 ## 📝 Author
 **Yatsenko V. T.**  
