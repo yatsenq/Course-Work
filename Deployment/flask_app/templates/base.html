@@ -4,7 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width,initial-scale=1" />
 		<meta name="theme-color" content="#101218" />
-		<title>{% block title %}News AI{% endblock %}</title>
+		<title>{% block title %}Fake News Detector{% endblock %}</title>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
@@ -20,7 +20,9 @@
 	<body>
 		<header class="hdr">
 			<div class="wrap hdr-in">
-				<a href="{{ url_for('index') }}" class="logo"><i>N</i>News AI</a>
+				<a href="{{ url_for('index') }}" class="logo"
+					><i>N</i>Fake News Detector</a
+				>
 				<nav>
 					{% if current_user.is_authenticated %} {% if current_user.is_admin %}
 					<a href="{{ url_for('admin_panel') }}" style="color: var(--p)"
@@ -65,11 +67,6 @@
 			</div>
 			{% endif %}{% endwith %} {% block content %}{% endblock %}
 		</main>
-		<footer class="ftr">
-			<div class="wrap ftr-in">
-				<p>News AI Platform</p>
-				<p>ML · Аналітика</p>
-			</div>
-		</footer>
+		<!-- Footer removed per user request -->
 	</body>
 </html>

@@ -107,6 +107,78 @@ def get_pdf_fonts() -> tuple[str, str]:
     return "Helvetica", "Helvetica-Bold"
 
 
+def extract_article_text(soup, url: str | None = None) -> str:
+    try:
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                payload = json.loads(script.string or "{}")
+            except Exception:
+                continue
+            if isinstance(payload, list):
+                for p in payload:
+                    if isinstance(p, dict) and p.get("articleBody"):
+                        return p.get("articleBody", "").strip()
+            elif isinstance(payload, dict):
+                if payload.get("articleBody"):
+                    return payload.get("articleBody", "").strip()
+                if payload.get("description") and len(payload.get("description", "")) > 120:
+                    return payload.get("description").strip()
+    except Exception:
+        pass
+
+    try:
+        meta = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
+        if meta and meta.get("content") and len(meta.get("content").strip()) > 80:
+            return meta.get("content").strip()
+    except Exception:
+        pass
+
+    try:
+        art = soup.find("article")
+        if art:
+            ps = [p.get_text().strip() for p in art.find_all("p") if p.get_text().strip()]
+            text = "\n".join(ps).strip()
+            if len(text) > 120:
+                return text
+    except Exception:
+        pass
+
+    try:
+        class_patterns = ["article", "news", "text", "content", "post", "entry-content", "newsText", "article__text"]
+        best = ""
+        for pat in class_patterns:
+            el = soup.find(lambda tag: tag.name in ("div", "section") and tag.get("class") and any(pat in c.lower() for c in tag.get("class")))
+            if el:
+                ps = [p.get_text().strip() for p in el.find_all("p") if p.get_text().strip()]
+                txt = "\n".join(ps).strip()
+                if len(txt) > len(best):
+                    best = txt
+        if len(best) > 120:
+            return best
+    except Exception:
+        pass
+
+    try:
+        paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
+        good_parts = []
+        for p in paragraphs:
+            if len(p) < 40:
+                continue
+            low = p.lower()
+            if any(x in low for x in ["©", "укрінформ", "ukrinform", "реклама", "матеріал розміщено", "цитування", "джерело:"]):
+                continue
+            good_parts.append(p)
+            if sum(len(s) for s in good_parts) > 1200:
+                break
+        out = "\n".join(good_parts).strip()
+        if len(out) > 80:
+            return out
+    except Exception:
+        pass
+
+    return ""
+
+
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
 
@@ -134,7 +206,6 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization", "X-CSRFToken"],
      methods=["GET", "POST", "OPTIONS", "DELETE", "PUT"])
 
-# CSRF захист
 csrf = CSRFProtect(app)
 
 instance_path = base_dir / "instance"
@@ -158,20 +229,17 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-# Динамічна конфігурація для локального та HF
-# HF always runs behind HTTPS and often in a cross-site iframe on huggingface.co.
 is_hf_space = bool(os.getenv("SPACE_ID"))
 is_https = os.getenv("SECURE_COOKIES", "false").lower() == "true" or is_hf_space
 app.config["SESSION_COOKIE_SECURE"] = is_https
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-# На HTTPS (HF) використовуємо "None" для cross-site cookies в iframe
-# На HTTP (локально) використовуємо "Lax"
 app.config["SESSION_COOKIE_SAMESITE"] = "None" if is_https else "Lax"
+app.config["SESSION_COOKIE_PARTITIONED"] = bool(is_https)
 app.config["REMEMBER_COOKIE_SECURE"] = is_https
 app.config["REMEMBER_COOKIE_HTTPONLY"] = True
 app.config["REMEMBER_COOKIE_SAMESITE"] = "None" if is_https else "Lax"
+app.config["REMEMBER_COOKIE_PARTITIONED"] = bool(is_https)
 
-# CSRF конфігурація - дозволити CSRF з однакових доменів
 app.config["WTF_CSRF_CHECK_DEFAULT"] = True
 app.config["WTF_CSRF_SSL_STRICT"] = False  # Для локального тестування
 app.config["WTF_CSRF_TIME_LIMIT"] = None  # Без часового ліміту
@@ -183,27 +251,21 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# Для Hugging Face та інших reverse proxy сервісів
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 def get_model_base_dir():
-    # 1. Environment variable
     env_val = os.getenv("MODEL_BASE_DIR")
     if env_val:
         return env_val
     
-    # 2. Look in current directory (if models are uploaded to same root)
     current = Path(__file__).resolve().parent
     if (current / "Models").exists():
         return str(current)
         
-    # 3. Look two levels up (original local structure: Course Work/Deployment/flask_app/app.py)
-    two_up = current.parents[1] if len(current.parents) > 1 else current
     if (two_up / "Models").exists():
         return str(two_up)
     
-    # 4. Fallback to current
     return str(current)
 
 MODEL_BASE_DIR = get_model_base_dir()
@@ -677,7 +739,7 @@ def guest():
 
     session["guest_mode"] = True
     flash("Гостьовий режим активовано.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("dashboard", guest_mode=1))
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -783,7 +845,19 @@ def logout():
 def dashboard():
     ensure_model_preload()
 
-    if not current_user.is_authenticated and not session.get("guest_mode", False):
+    guest_mode = (
+        session.get("guest_mode", False)
+        or request.args.get("guest_mode") == "1"
+        or request.form.get("guest_mode") == "1"
+    )
+
+    if request.method == "POST" and not current_user.is_authenticated:
+        posted_text = request.form.get("news_text", "").strip()
+        if posted_text:
+            guest_mode = True
+            session["guest_mode"] = True
+
+    if not current_user.is_authenticated and not guest_mode:
         flash("Спочатку увійдіть в акаунт або оберіть «Гість», щоб почати аналіз.", "error")
         return redirect(url_for("index"))
 
@@ -791,9 +865,11 @@ def dashboard():
     text = ""
 
     if request.method == "POST":
+        if guest_mode:
+            session["guest_mode"] = True
+
         text = request.form.get("news_text", "").strip()
         
-        # URL Parsing feature
         if text.startswith("http://") or text.startswith("https://"):
             try:
                 import requests
@@ -801,10 +877,16 @@ def dashboard():
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 resp = requests.get(text, headers=headers, timeout=5)
                 soup = BeautifulSoup(resp.text, "html.parser")
-                paragraphs = soup.find_all("p")
-                text = "\n".join(p.get_text() for p in paragraphs).strip()
-                if not text:
-                    flash("Не вдалося витягнути текст із сайту.", "error")
+                extracted = extract_article_text(soup, url=text)
+                if extracted:
+                    text = extracted
+                else:
+                    paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
+                    joined = "\n".join(paragraphs)
+                    if joined and len(joined) > 50 and not any(b in joined.lower() for b in ["укрінформ", "©", "реклама"]):
+                        text = joined
+                    else:
+                        flash("Не вдалося витягнути текст із сайту.", "error")
             except Exception as e:
                 flash("Помилка парсингу посилання.", "error")
                 text = ""
@@ -838,6 +920,7 @@ def dashboard():
         text=text,
         history_items=history_items,
         model_base_dir=MODEL_BASE_DIR,
+        guest_mode=guest_mode,
     )
 
 
@@ -852,6 +935,8 @@ def random_example(example_type):
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
+        sources_arg = request.args.get('sources', '').strip()
+        custom_urls = [s.strip() for s in sources_arg.split(',') if s.strip()] if sources_arg else None
         if example_type == "fake":
             resp = requests.get("https://www.stopfake.org/uk/golovna/", headers=headers, timeout=5)
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -877,40 +962,55 @@ def random_example(example_type):
             
         elif example_type == "true":
             headers = {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://www.google.com/',
             }
-            # Спробуємо рубрику "Війна"
-            urls = ["https://www.ukrinform.ua/rubric-war", "https://www.ukrinform.ua/rubric-ato"]
-            links = []
+            from urllib.parse import urljoin
             
+            # Primary sources: TSN, Radiosvoboda (Ukrinform blocks requests)
+            urls = ["https://tsn.ua/ato", "https://www.radiosvoboda.org/"]
+            # If custom sources provided via ?sources=url1,url2 use them instead
+            if custom_urls:
+                urls = custom_urls
+            links = []
+
             for target_url in urls:
                 try:
                     resp = requests.get(target_url, headers=headers, timeout=7)
+                    if resp.status_code != 200:
+                        logger.warning("random_example: %s returned status %s", target_url, resp.status_code)
+                        continue
                     soup = BeautifulSoup(resp.text, "html.parser")
+                    
+                    # If direct article URL (e.g., radiosvoboda /a/ link), accept it
+                    if "/a/" in target_url or target_url.endswith('.html'):
+                        links.append(target_url)
+                    
                     for a in soup.find_all("a", href=True):
                         href = a["href"]
-                        if ".html" in href and ("rubric-" in href or "/war-" in href):
-                            full_url = f"https://www.ukrinform.ua{href}" if href.startswith("/") else href
-                            if "ukrinform.ua" in full_url and full_url not in links:
-                                links.append(full_url)
-                except: continue
-                if links: break
+                        if not href or href.startswith("javascript:"):
+                            continue
+                        full_url = urljoin(target_url, href)
+                        # Accept typical article patterns and restrict to known domains
+                        if any(p in full_url for p in [".html", "/news", "/article", "/a/"]):
+                            if any(dom in full_url for dom in ["tsn.ua", "radiosvoboda.org"]):
+                                if full_url not in links:
+                                    links.append(full_url)
+                except Exception as exc:
+                    logger.warning("random_example: error fetching %s — %s", target_url, exc)
+                    continue
 
             if not links:
-                return jsonify({"error": "Сайт новин тимчасово недоступний. Спробуйте StopFake."}), 404
-                
+                logger.warning("random_example: no links found for sources: %s", urls)
+                return jsonify({"error": "Не знайдено прикладів на вказаних джерелах."}), 404
+
             chosen_url = random.choice(links[:20])
             article_resp = requests.get(chosen_url, headers=headers, timeout=7)
             article_soup = BeautifulSoup(article_resp.text, "html.parser")
-            
-            content_div = article_soup.find("div", class_="newsText") or article_soup.find("article")
-            paragraphs = content_div.find_all("p") if content_div else article_soup.find_all("p")
-            
-            text = "\n".join(p.get_text() for p in paragraphs if len(p.get_text()) > 30).strip()
-            if not text:
-                 return jsonify({"error": "Не вдалося витягнути текст. Спробуйте ще раз."}), 404
-            
-            return jsonify({"text": text[:3000]})
+            extracted = extract_article_text(article_soup, url=chosen_url)
+            if not extracted:
+                return jsonify({"error": "Не вдалося витягнути текст. Спробуйте ще раз."}), 404
+            return jsonify({"text": extracted[:3000]})
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500

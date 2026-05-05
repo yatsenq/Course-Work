@@ -1,5 +1,5 @@
-{% extends 'base.html' %} {% block title %}Аналіз · News AI{% endblock %} {%
-block content %}
+{% extends 'base.html' %} {% block title %}Аналіз · Fake News Detector{%
+endblock %} {% block content %}
 
 <div class="dash-grid">
 	<div class="dash-left">
@@ -9,6 +9,9 @@ block content %}
 			</h2>
 			<form method="post" class="form-row" id="af">
 				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+				{% if guest_mode %}
+				<input type="hidden" name="guest_mode" value="1" />
+				{% endif %}
 				<textarea
 					id="nt"
 					name="news_text"
@@ -27,7 +30,8 @@ block content %}
 					<strong>Фейк (StopFake)</strong><small>Завантажити текст</small>
 				</button>
 				<button type="button" class="ex-btn" id="btn-ex-true">
-					<strong>Правда (Укрінформ)</strong><small>Завантажити текст</small>
+					<strong>Правда (TSN / Radio Svoboda)</strong
+					><small>Завантажити текст</small>
 				</button>
 			</div>
 		</div>
