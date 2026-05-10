@@ -3,7 +3,7 @@ endblock %} {% block content %}
 
 <div class="dash-grid">
 	<div class="dash-left">
-		<div class="c">
+		<div class="c" id="grid-form">
 			<h2 style="font-size: 17px; margin-bottom: 10px">
 				Текст новини або посилання (URL)
 			</h2>
@@ -37,26 +37,32 @@ endblock %} {% block content %}
 		</div>
 
 		{% if result and result.fake_markers %}
-		<div class="c" style="margin-bottom: 20px">
-			<h3 style="font-size: 15px; margin-bottom: 10px">
-				Аналіз тексту (Highlighting)
-			</h3>
-			<p style="font-size: 13px; color: var(--t2); margin-bottom: 8px">
-				Зеленим підсвічені слова, що характерні для правдивих новин, червоним —
-				для фейків.
-			</p>
-			<div
-				id="highlighted-text"
-				style="
-					font-size: 14px;
-					line-height: 1.6;
-					padding: 10px;
-					background: var(--bg2);
-					border-radius: 8px;
-					white-space: pre-wrap;
-				"
-			>
-				{{ result.input_text }}
+		<div class="c" id="grid-high" style="margin-bottom: 20px">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+				<h3 style="font-size: 15px; margin: 0">
+					Аналіз тексту
+				</h3>
+				<button type="button" class="btn btn-s btn-sm detail-toggle" id="dt-highlight" style="margin: 0">
+					Показати текст
+				</button>
+			</div>
+			<div class="detail-box hidden" id="dp-highlight" style="margin-top: 0">
+				<p style="font-size: 13px; color: var(--t2); margin-bottom: 8px">
+					Зеленим підсвічені слова, що характерні для правдивих новин, червоним — для фейків.
+				</p>
+				<div
+					id="highlighted-text"
+					style="
+						font-size: 14px;
+						line-height: 1.6;
+						padding: 10px;
+						background: var(--bg2);
+						border-radius: 8px;
+						white-space: pre-wrap;
+					"
+				>
+					{{ result.input_text }}
+				</div>
 			</div>
 			<script>
 				document.addEventListener('DOMContentLoaded', () => {
@@ -80,7 +86,7 @@ endblock %} {% block content %}
 	<div class="dash-right">
 		{% if result %}
 		<div class="res-stack">
-			<div class="c res-card anim-in">
+			<div class="c res-card anim-in" id="grid-fake">
 				<div class="v-row">
 					<div>
 						<div
@@ -231,7 +237,7 @@ endblock %} {% block content %}
 				{% endif %}
 			</div>
 
-			<div class="c res-card anim-in">
+			<div class="c res-card anim-in" id="grid-theme">
 				<div class="v-row">
 					<div class="tb">{{ result.theme }}</div>
 					<div class="cf">
@@ -269,6 +275,7 @@ endblock %} {% block content %}
 				</div>
 			</div>
 			<div
+				id="grid-disc"
 				style="
 					margin-top: 15px;
 					font-size: 12px;
@@ -292,7 +299,7 @@ endblock %} {% block content %}
 		</div>
 
 		{% else %}
-		<div class="c ph">
+		<div class="c ph" id="grid-ph">
 			<strong>Результат з'явиться тут</strong>Введіть текст новини або вставте
 			посилання та натисніть «Аналіз»
 		</div>
@@ -398,22 +405,39 @@ endblock %} {% block content %}
 			'Результати моделей',
 			'Сховати результати',
 		)
+		toggleDetails(
+			'dt-highlight',
+			'dp-highlight',
+			'Показати текст',
+			'Сховати текст',
+		)
 
 		f?.addEventListener('submit', () => {
 			if (!ta.value.trim()) return
+			
+			// Сховати клавіатуру на мобільному
+			ta.blur()
+			
 			const btn = document.getElementById('sb')
 			if (btn) btn.innerHTML = 'Аналізую...'
 
 			const rightPanel = document.querySelector('.dash-right')
 			if (rightPanel) {
+				// Прокрутити сторінку до результатів на мобільному
+				if (window.innerWidth <= 640) {
+					setTimeout(() => {
+						rightPanel.scrollIntoView({ behavior: 'smooth' })
+					}, 100)
+				}
+				
 				rightPanel.innerHTML = `
-          <div class="c res-card" style="border: 1px solid var(--border);">
+          <div class="c res-card" id="grid-fake" style="border: 1px solid var(--border);">
             <div class="skel" style="height: 24px; width: 60%; margin-bottom: 20px;"></div>
             <div class="skel" style="height: 14px; width: 100%; margin-bottom: 10px;"></div>
             <div class="skel" style="height: 14px; width: 80%; margin-bottom: 10px;"></div>
             <div class="skel" style="height: 40px; width: 100%; margin-top: 20px;"></div>
           </div>
-          <div class="c res-card" style="margin-top: 20px; border: 1px solid var(--border);">
+          <div class="c res-card" id="grid-theme" style="margin-top: 20px; border: 1px solid var(--border);">
             <div class="skel" style="height: 24px; width: 40%; margin-bottom: 20px;"></div>
             <div class="skel" style="height: 150px; width: 100%;"></div>
           </div>

@@ -240,7 +240,8 @@ app.config["REMEMBER_COOKIE_HTTPONLY"] = True
 app.config["REMEMBER_COOKIE_SAMESITE"] = "None" if is_https else "Lax"
 app.config["REMEMBER_COOKIE_PARTITIONED"] = bool(is_https)
 
-app.config["WTF_CSRF_CHECK_DEFAULT"] = True
+app.config["WTF_CSRF_ENABLED"] = False
+app.config["WTF_CSRF_CHECK_DEFAULT"] = False
 app.config["WTF_CSRF_SSL_STRICT"] = False  # Для локального тестування
 app.config["WTF_CSRF_TIME_LIMIT"] = None  # Без часового ліміту
 
@@ -729,7 +730,29 @@ def ensure_model_preload() -> None:
 @app.route("/")
 def index():
     ensure_model_preload()
-    return render_template("index.html")
+    try:
+        from datetime import datetime
+        today = datetime.utcnow().date()
+        total = CheckHistory.query.count()
+        today_fakes = CheckHistory.query.filter(
+            CheckHistory.fake_label == "FAKE",
+            db.func.date(CheckHistory.created_at) == today
+        ).count()
+        
+        themes = db.session.query(CheckHistory.theme, db.func.count(CheckHistory.id)).group_by(CheckHistory.theme).all()
+        theme_labels = [t[0] for t in themes if t[0]]
+        theme_data = [t[1] for t in themes if t[0]]
+        
+        stats = {
+            "total": total,
+            "global_today_fakes": today_fakes,
+            "theme_labels": theme_labels,
+            "theme_data": theme_data
+        }
+    except Exception:
+        stats = {"total": 0, "global_today_fakes": 0, "theme_labels": [], "theme_data": []}
+        
+    return render_template("index.html", stats=stats)
 
 
 @app.route("/guest")
