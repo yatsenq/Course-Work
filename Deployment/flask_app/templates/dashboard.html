@@ -70,11 +70,13 @@ endblock %} {% block content %}
 				    const el = document.getElementById('highlighted-text');
 				    let html = el.textContent;
 				    markers.forEach(m => {
-				        // LogReg negative coef -> FAKE, positive -> TRUE
 				        const color = m.score < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)';
-				        // escape regex chars
-				        const keyword = m.keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-				        const regex = new RegExp(`(?<![а-яА-Яіїєґ])(${keyword})(?![а-яА-Яіїєґ])`, 'gi');
+				        // Маркери лематизовані, текст — оригінальний.
+				        // Шукаємо по кореню: перші max(4, len-2) символів
+				        const escaped = m.keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+				        const stemLen = Math.max(4, escaped.length - 2);
+				        const stem = escaped.substring(0, stemLen);
+				        const regex = new RegExp(`(?<![\u0430-\u044f\u0410-\u042f\u0456\u0457\u0454\u0491a-zA-Z])(${stem}[\u0430-\u044f\u0456\u0457\u0454\u0491]*)(?![\u0430-\u044f\u0410-\u042f\u0456\u0457\u0454\u0491a-zA-Z])`, 'gi');
 				        html = html.replace(regex, `<span style="background-color: ${color}; padding: 0 2px; border-radius: 3px;">$1</span>`);
 				    });
 				    el.innerHTML = html;
