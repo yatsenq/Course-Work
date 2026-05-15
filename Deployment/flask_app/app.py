@@ -108,6 +108,7 @@ def get_pdf_fonts() -> tuple[str, str]:
 
 
 def extract_article_text(soup, url: str | None = None) -> str:
+    # 1. Спроба витягнути чистий текст із JSON-LD
     try:
         for script in soup.find_all("script", type="application/ld+json"):
             try:
@@ -121,58 +122,108 @@ def extract_article_text(soup, url: str | None = None) -> str:
             elif isinstance(payload, dict):
                 if payload.get("articleBody"):
                     return payload.get("articleBody", "").strip()
-                if payload.get("description") and len(payload.get("description", "")) > 120:
-                    return payload.get("description").strip()
     except Exception:
         pass
 
+    # Видаляємо всі непотрібні блоки (меню, футери, бокові панелі)
+    for el in soup.find_all(["nav", "footer", "header", "aside", "form", "button"]):
+        el.decompose()
+
+    def get_clean_text(container):
+        stop_phrases = ["читати публікацію повністю", "читайте також", "більше по темі", 
+                        "підписуйтесь", "слідкуйте за", "©", "реклама", "джерело:"]
+        paragraphs = [p.get_text().strip() for p in container.find_all("p")]
+        good_parts = []
+        for p in paragraphs:
+            if len(p) < 25:
+                continue
+            low = p.lower()
+            if any(x in low for x in stop_phrases):
+                # Якщо ми натрапили на "читати повністю" або "читайте також", 
+                # швидше за все, стаття вже закінчилася і почалися рекомендації.
+                if "читати публікацію повністю" in low or "читайте також" in low:
+                    break
+                continue
+            good_parts.append(p)
+        return "\n".join(good_parts).strip()
+
+    # 1.5 Спеціальний парсер для lb.ua (тільки для True новин)
     try:
-        meta = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
-        if meta and meta.get("content") and len(meta.get("content").strip()) > 80:
-            return meta.get("content").strip()
+        if url and "lb.ua" in url:
+            import re as _re
+            if _re.search(r'lb\.ua/(society|world|pravo|news|economics|politics)/\d{4}/', url):
+                # Шукаємо контейнер з текстом статті
+                lb_selectors = [
+                    ("div", "article_body"),
+                    ("div", "lb-article"),
+                    ("div", "news__body"),
+                    ("div", "news__text"),
+                    ("div", "article-text"),
+                ]
+                for tag, cls in lb_selectors:
+                    container = soup.find(tag, class_=cls)
+                    if container:
+                        txt = get_clean_text(container)
+                        if len(txt) > 80:
+                            return txt
+                # Fallback — <article> тег
+                art = soup.find("article")
+                if art:
+                    txt = get_clean_text(art)
+                    if len(txt) > 80:
+                        return txt
+                # Last resort для lb.ua — усі <p> між заголовком і тегами
+                all_p = soup.find_all("p")
+                good = []
+                for p in all_p:
+                    t = p.get_text().strip()
+                    if len(t) > 20 and "©" not in t and "реклама" not in t.lower():
+                        good.append(t)
+                    if any(x in t.lower() for x in ["читайте також", "читати публікацію"]):
+                        break
+                if good:
+                    return "\n".join(good)
     except Exception:
         pass
 
+    # 2. Пошук стандартного тегу <article>
     try:
         art = soup.find("article")
         if art:
-            ps = [p.get_text().strip() for p in art.find_all("p") if p.get_text().strip()]
-            text = "\n".join(ps).strip()
-            if len(text) > 120:
+            text = get_clean_text(art)
+            if len(text) > 150:
                 return text
     except Exception:
         pass
 
+    # 3. Пошук по класах, які зазвичай містять текст статті
     try:
         class_patterns = ["article", "news", "text", "content", "post", "entry-content", "newsText", "article__text"]
         best = ""
         for pat in class_patterns:
             el = soup.find(lambda tag: tag.name in ("div", "section") and tag.get("class") and any(pat in c.lower() for c in tag.get("class")))
             if el:
-                ps = [p.get_text().strip() for p in el.find_all("p") if p.get_text().strip()]
-                txt = "\n".join(ps).strip()
+                txt = get_clean_text(el)
                 if len(txt) > len(best):
                     best = txt
-        if len(best) > 120:
+        if len(best) > 150:
             return best
     except Exception:
         pass
 
+    # 4. Якщо класи не знайдені, беремо всі абзаци <p>, але фільтруємо їх
     try:
-        paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
-        good_parts = []
-        for p in paragraphs:
-            if len(p) < 40:
-                continue
-            low = p.lower()
-            if any(x in low for x in ["©", "укрінформ", "ukrinform", "реклама", "матеріал розміщено", "цитування", "джерело:"]):
-                continue
-            good_parts.append(p)
-            if sum(len(s) for s in good_parts) > 1200:
-                break
-        out = "\n".join(good_parts).strip()
-        if len(out) > 80:
-            return out
+        txt = get_clean_text(soup)
+        if len(txt) > 150:
+            return txt
+    except Exception:
+        pass
+
+    # 5. Останній шанс: беремо meta description (найгірший варіант, бо там тільки заголовок/підзаголовок)
+    try:
+        meta = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
+        if meta and meta.get("content") and len(meta.get("content").strip()) > 80:
+            return meta.get("content").strip()
     except Exception:
         pass
 
@@ -857,11 +908,27 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
-    session.pop("guest_mode", None)
-    session.clear()  # Очищаємо всю сесію
     logout_user()
+    session.pop("guest_mode", None)
     flash("Ви вийшли з акаунта.", "success")
-    return redirect(url_for("index"))
+    
+    resp = redirect(url_for("index"))
+    
+    # Ручне видалення remember_token із правильними SameSite/Secure прапорцями
+    is_https = app.config.get("SESSION_COOKIE_SECURE", False)
+    samesite = "None" if is_https else "Lax"
+    cookie_name = app.config.get("REMEMBER_COOKIE_NAME", "remember_token")
+    
+    resp.set_cookie(
+        cookie_name,
+        "",
+        expires=0,
+        secure=is_https,
+        httponly=True,
+        samesite=samesite
+    )
+    
+    return resp
 
 
 @app.route("/dashboard", methods=["GET", "POST"])
@@ -893,23 +960,24 @@ def dashboard():
 
         text = request.form.get("news_text", "").strip()
         
+        is_url_input = False
         if text.startswith("http://") or text.startswith("https://"):
+            is_url_input = True
             try:
-                import requests
+                import requests as req_lib
                 from bs4 import BeautifulSoup
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                resp = requests.get(text, headers=headers, timeout=5)
-                soup = BeautifulSoup(resp.text, "html.parser")
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'uk,en;q=0.9',
+                }
+                page_resp = req_lib.get(text, headers=headers, timeout=8, allow_redirects=True)
+                soup = BeautifulSoup(page_resp.text, "html.parser")
                 extracted = extract_article_text(soup, url=text)
-                if extracted:
+                if extracted and len(extracted) > 150:
                     text = extracted
                 else:
-                    paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
-                    joined = "\n".join(paragraphs)
-                    if joined and len(joined) > 50 and not any(b in joined.lower() for b in ["укрінформ", "©", "реклама"]):
-                        text = joined
-                    else:
-                        flash("Не вдалося витягнути текст із сайту.", "error")
+                    flash("Не вдалося витягнути достатньо тексту з цього сайту. Спробуйте вставити текст вручну.", "error")
+                    text = ""
             except Exception as e:
                 flash("Помилка парсингу посилання.", "error")
                 text = ""
@@ -918,16 +986,17 @@ def dashboard():
             flash("Введіть текст новини або коректне посилання.", "error")
         else:
             try:
-                # Caching logic
+                # Caching logic — відключаємо кеш для URL-джерел, щоб уникнути хибних результатів
                 text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
-                cached = AnalysisCache.query.filter_by(text_hash=text_hash).first()
+                cached = None if is_url_input else AnalysisCache.query.filter_by(text_hash=text_hash).first()
                 if cached:
                     result = json.loads(cached.result_json)
                 else:
                     result = ml_service.predict_selected_models(text, MODEL_BASE_DIR)
-                    cache_entry = AnalysisCache(text_hash=text_hash, result_json=json.dumps(result, ensure_ascii=False))
-                    db.session.add(cache_entry)
-                    db.session.commit()
+                    if not is_url_input:
+                        cache_entry = AnalysisCache(text_hash=text_hash, result_json=json.dumps(result, ensure_ascii=False))
+                        db.session.add(cache_entry)
+                        db.session.commit()
 
                 if current_user.is_authenticated:
                     history_record = save_history_item(current_user.id, text, result)
@@ -990,48 +1059,58 @@ def random_example(example_type):
             }
             from urllib.parse import urljoin
             
-            # Primary sources: TSN, Radiosvoboda (Ukrinform blocks requests)
-            urls = ["https://tsn.ua/ato", "https://www.radiosvoboda.org/"]
-            # If custom sources provided via ?sources=url1,url2 use them instead
+            # Джерела True новин — тільки lb.ua
+            all_source_urls = [
+                "https://lb.ua/tag/13406_viyna_z_rosiieyu",
+                # "https://suspilne.media/ukr/",
+                # "https://www.radiosvoboda.org/",
+                # "https://tsn.ua/ukrayina",
+            ]
             if custom_urls:
-                urls = custom_urls
+                all_source_urls = custom_urls
+            
             links = []
-
-            for target_url in urls:
+            # Перемішуємо джерела для різноманітності
+            random.shuffle(all_source_urls)
+            
+            for target_url in all_source_urls:
+                if len(links) >= 30:
+                    break
                 try:
                     resp = requests.get(target_url, headers=headers, timeout=7)
                     if resp.status_code != 200:
-                        logger.warning("random_example: %s returned status %s", target_url, resp.status_code)
                         continue
                     soup = BeautifulSoup(resp.text, "html.parser")
                     
-                    # If direct article URL (e.g., radiosvoboda /a/ link), accept it
-                    if "/a/" in target_url or target_url.endswith('.html'):
-                        links.append(target_url)
-                    
                     for a in soup.find_all("a", href=True):
                         href = a["href"]
-                        if not href or href.startswith("javascript:"):
+                        if not href or href.startswith("javascript:") or href == "/" or href == "#":
                             continue
                         full_url = urljoin(target_url, href)
-                        # Accept typical article patterns and restrict to known domains
-                        if any(p in full_url for p in [".html", "/news", "/article", "/a/"]):
-                            if any(dom in full_url for dom in ["tsn.ua", "radiosvoboda.org"]):
+                        # LB.ua — статті мають патерн /society/YYYY/MM/DD/ або /world/, /news/, /pravo/
+                        if "lb.ua" in full_url:
+                            import re as _re
+                            if _re.search(r'lb\.ua/(society|world|pravo|news|economics|politics)/\d{4}/\d{2}/\d{2}/\d+_', full_url):
                                 if full_url not in links:
+                                    links.append(full_url)
+                        # Інші сайти
+                        elif any(p in full_url for p in ["/news/", "/article/", "/a/", "/statti/", "/novyny/"]):
+                            if any(dom in full_url for dom in ["suspilne.media", "radiosvoboda.org", "tsn.ua"]):
+                                if full_url not in links and len(full_url) > 30:
                                     links.append(full_url)
                 except Exception as exc:
                     logger.warning("random_example: error fetching %s — %s", target_url, exc)
                     continue
 
             if not links:
-                logger.warning("random_example: no links found for sources: %s", urls)
-                return jsonify({"error": "Не знайдено прикладів на вказаних джерелах."}), 404
+                return jsonify({"error": "Не знайдено прикладів. Спробуйте ще раз."}), 404
 
-            chosen_url = random.choice(links[:20])
+            # Беремо рандомну статтю з усього списку (не тільки перші 20)
+            chosen_url = random.choice(links)
             article_resp = requests.get(chosen_url, headers=headers, timeout=7)
             article_soup = BeautifulSoup(article_resp.text, "html.parser")
             extracted = extract_article_text(article_soup, url=chosen_url)
-            if not extracted:
+            if not extracted or len(extracted) < 150:
                 return jsonify({"error": "Не вдалося витягнути текст. Спробуйте ще раз."}), 404
             return jsonify({"text": extracted[:3000]})
             

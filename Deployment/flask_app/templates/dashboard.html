@@ -274,28 +274,6 @@ endblock %} {% block content %}
 					{% endif %}
 				</div>
 			</div>
-			<div
-				id="grid-disc"
-				style="
-					margin-top: 15px;
-					font-size: 12px;
-					color: var(--t3);
-					display: flex;
-					align-items: flex-start;
-					gap: 8px;
-					background: var(--bg2);
-					padding: 10px;
-					border-radius: 6px;
-				"
-			>
-				<span style="font-size: 16px">⚠️</span>
-				<p style="margin: 0; text-align: left; line-height: 1.4">
-					<strong>Увага:</strong> Результати аналізу генеруються алгоритмами
-					машинного навчання (ШІ) та не є 100% гарантією достовірності.
-					Платформа є допоміжним інструментом і не може замінити критичне
-					мислення та професійний фактчекінг.
-				</p>
-			</div>
 		</div>
 
 		{% else %}
@@ -307,6 +285,30 @@ endblock %} {% block content %}
 	</div>
 </div>
 
+<div
+	style="
+		margin-top: 24px;
+		font-size: 13px;
+		color: var(--t2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		background: var(--card);
+		border: 1px solid var(--b);
+		padding: 16px;
+		border-radius: 8px;
+		text-align: center;
+	"
+>
+	<span style="font-size: 18px">⚠️</span>
+	<p style="margin: 0; line-height: 1.5; max-width: 800px;">
+		<strong>Увага:</strong> Результати аналізу генеруються алгоритмами
+		машинного навчання (ШІ) та не є 100% гарантією достовірності.
+		Платформа є допоміжним інструментом і не може замінити критичне
+		мислення та професійний фактчекінг.
+	</p>
+</div>
 <style>
 	@keyframes pulse {
 		0% {
