@@ -1,58 +1,101 @@
-# Fake News Detector for Ukrainian News 🇺🇦🤖
+# Детектор фейкових новин для українськомовних ЗМІ 🇺🇦🤖
 
-An intelligent web system for automatic fake news detection and thematic classification of Ukrainian news using Machine Learning and Deep Learning (mBERT).
+Інтелектуальна веб-система для автоматичного виявлення фейків та тематичної класифікації українських новин на основі Machine Learning та Deep Learning (mBERT).
 
-## 🌟 Features
-- **Binary Classification:** Detects if a news article is `TRUE` or `FAKE` with high confidence.
-- **Topic Classification:** Automatically categorizes news into 4 themes: Politics, Sport, Business, and Technology.
-- **Hybrid AI Model:** Uses an ensemble of **mBERT** (Multilingual BERT) and classic **Logistic Regression** with TF-IDF.
-- **Automated Evidence:** Highlights specific manipulation markers (keywords) in the text.
-- **Reporting:** Generates detailed PDF reports for each analysis.
-- **User Dashboard:** Full history of checks for authorized users.
-- **Admin Panel:** Real-time stats and user management.
+## 🌟 Можливості
 
-## 🛠 Tech Stack
-- **Backend:** Python, Flask, Flask-Login, SQLAlchemy
-- **AI/ML:** PyTorch, Transformers (Hugging Face), Scikit-learn
-- **NLP:** PyMorphy3 (for Ukrainian morphology)
-- **Database:** PostgreSQL / SQLite
-- **Deployment:** Docker, Hugging Face Spaces
+- **Бінарна класифікація**: визначає, чи є новина `TRUE` (достовірною) або `FAKE` (фейком) з відображенням відсотка впевненості
+- **Класифікація теми**: автоматично відносить новину до однієї з 4 тем — Політика, Спорт, Бізнес, Технології
+- **Ансамблева ML-модель**: поєднує **mBERT** (Multilingual BERT) та класичну **логістичну регресію** з TF-IDF для більш надійного результату
+- **Пояснюваний AI**: підсвічує конкретні слова-маніпулятори та тематичні маркери безпосередньо у тексті
+- **PDF-звіт**: генерує детальний звіт про аналіз для збереження або друку
+- **Особистий кабінет**: авторизовані користувачі мають доступ до повної історії перевірок
+- **Панель адміністратора**: статистика в реальному часі та управління користувачами
+- **Гостьовий режим**: аналіз без реєстрації
 
-## 🏗 System Architecture
-The system uses a **distributed deployment model** to optimize resources:
-1. **Model Repository:** Stores heavy BERT weights and vectorized models.
-2. **App Space:** Runs the Flask web application in a Docker container.
-3. **ML Service:** Dynamically pulls weights on startup and performs inference using an ensemble of 4 models.
+## 🛠 Технічний стек
 
-## 🚀 Installation & Local Run
-1. Clone the repository:
+| Рівень | Технології |
+|--------|-----------|
+| **Backend** | Python 3.11, Flask, Flask-Login, Flask-WTF (CSRF), SQLAlchemy |
+| **AI / ML** | PyTorch, Transformers (HuggingFace), Scikit-learn |
+| **NLP** | PyMorphy3 (морфологічний аналіз для укр. мови), TF-IDF |
+| **База даних** | PostgreSQL (продакшн) / SQLite (локально) |
+| **Деплоймент** | Docker, Hugging Face Spaces |
+
+## 🏗 Архітектура системи
+
+Система використовує **розподілену модель деплойменту**:
+
+1. **Репозиторій ваг** (`yatsenq/news-detector-weights` на HuggingFace Hub): зберігає важкі ваги BERT-моделей та векторизатори
+2. **Flask-додаток** (Hugging Face Spaces): запускається в Docker-контейнері, при старті автоматично завантажує ваги
+3. **ML Service** (`ml_service.py`): сервісний шар між веб-додатком і моделями — запускає ансамбль із 4 моделей і повертає структурований результат
+
+## 🤖 Моделі та результати
+
+| Модель | Завдання | Accuracy | F1-Score |
+|--------|----------|----------|----------|
+| mBERT + Head C (Attention Pooling) | Детекція фейку | **92.9%** | **0.929** |
+| Logistic Regression + TF-IDF | Детекція фейку | 84.1% | 0.837 |
+| SVM Exp-B + TF-IDF | Класифікація теми | 96.7% | 0.967 |
+| mBERT Exp-B | Класифікація теми | 97.72% | 0.9772 |
+
+Фінальний вирок — **усереднення** ймовірностей від LogReg і BERT. Тема — від моделі з вищою впевненістю.
+
+## 🚀 Локальний запуск
+
+1. Клонувати репозиторій:
    ```bash
    git clone https://github.com/yatsenq/Course-Work.git
    cd Course-Work/Deployment/flask_app
    ```
-2. Install dependencies:
+
+2. Встановити залежності:
    ```bash
    pip install -r requirements.txt
    ```
-3. Set up environment variables:
-   Create a `.env` file with `SECRET_KEY` and `DATABASE_URL`.
-4. Run the app:
+
+3. Створити файл `.env` з налаштуваннями:
+   ```
+   SECRET_KEY=ваш_секретний_ключ
+   DATABASE_URL=sqlite:///app.db
+   HF_TOKEN=ваш_токен_huggingface   # для завантаження ваг
+   ```
+
+4. Запустити додаток:
    ```bash
    python app.py
    ```
 
-## 📊 Performance
-| Model | Accuracy | F1-Score |
-|-------|----------|----------|
-| mBERT (Head C) | **92.9%** | **0.929** |
-| Logistic Regression | 84.1% | 0.837 |
-| SVM (Topic) | 96.7% | 0.967 |
-| mBERT (Topic) | 97.72% | 0.9772 |
+## 📂 Структура проєкту
 
-## 📝 Author
-**Yatsenko V. T.**  
-Student at Ivan Franko National University of Lviv  
-Coursework 2026
+```
+Course-Work/
+├── experiments/                 # Jupyter notebooks з навчанням моделей
+│   ├── 01_baseline_fake.ipynb   # Logistic Regression baseline
+│   ├── 02_bert_fake_base.ipynb  # BERT з трьома архітектурами голів
+│   ├── 03_bert_fake_expA.ipynb  # BERT на незбалансованих даних
+│   ├── 04_topic_svm_base.ipynb  # SVM для 5 тем
+│   ├── 05_topic_svm_expB.ipynb  # SVM для 4 тем (виробничий)
+│   ├── 06_bert_topic_base.ipynb # BERT для 5 тем
+│   ├── 07_bert_topic_expB.ipynb # BERT для 4 тем (виробничий)
+│   └── 08_final_comparison.ipynb# Фінальне порівняння всіх моделей
+│
+├── Deployment/flask_app/        # Веб-додаток
+│   ├── app.py                   # Flask-маршрути та логіка
+│   ├── ml_service.py            # Сервісний шар ML-інференсу
+│   ├── templates/               # HTML-шаблони
+│   └── static/                  # CSS, JS, шрифти
+│
+├── Datasets/                    # Датасети для навчання
+└── Documents/                   # Документація до курсової роботи
+```
+
+## 📝 Автор
+
+**Яценко В. Т.**  
+Студент Львівського національного університету імені Івана Франка  
+Курсова робота, 2026
 
 ---
-*Disclaimer: This tool is an AI-powered assistant. Please double-check critical information via official sources.*
+*Застереження: результати аналізу генеруються алгоритмами машинного навчання і не є 100% гарантією достовірності. Платформа є допоміжним інструментом і не замінює критичне мислення та професійний фактчекінг.*
