@@ -1001,6 +1001,13 @@ def dashboard():
                 if current_user.is_authenticated:
                     history_record = save_history_item(current_user.id, text, result)
                     result["history_id"] = history_record.id
+                else:
+                    guest_u = User.query.filter_by(username="guest_stats").first()
+                    if not guest_u:
+                        guest_u = User(username="guest_stats", email="guest@detector.local", password_hash=generate_password_hash("guest123"))
+                        db.session.add(guest_u)
+                        db.session.commit()
+                    save_history_item(guest_u.id, text, result)
                 flash("Аналіз виконано.", "success")
             except Exception as exc:
                 flash(f"Помилка аналізу: {exc}", "error")

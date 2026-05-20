@@ -771,8 +771,6 @@ def predict_selected_models(text: str, model_base_dir: str) -> dict[str, Any]:
 
     # 1. LogReg fake
     try:
-        # LogReg навчалася на лематизованому тексті (01_baseline_fake.ipynb)
-        # тому перед векторизацією застосовуємо той самий препроцесинг
         logreg_clean = preprocess_for_theme(text, res["stopwords"], res["morph"])
         X = res["logreg_vec"].transform([logreg_clean])
         lr = res["logreg_model"]

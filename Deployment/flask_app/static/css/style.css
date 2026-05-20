@@ -107,7 +107,7 @@ textarea{resize:vertical;min-height:180px;line-height:1.55}
 .meter{height:8px;border-radius:99px;background:var(--card2);overflow:hidden}
 .meter span{display:block;height:100%;border-radius:inherit;background:var(--ac);transition:width .5s ease}
 .detail-toggle{margin-top:6px}
-.detail-box{border:1px solid var(--b);border-radius:var(--r);padding:16px;background:var(--card2);margin-top:8px}
+.detail-box{border:1px solid var(--b);border-radius:var(--r);padding:16px;background:var(--card2);margin-top:8px;max-width:100%;overflow-x:auto}
 .mk-cloud{display:flex;flex-wrap:wrap;gap:6px}
 .mk{font-size:13px;padding:4px 10px;border-radius:99px;background:var(--card);border:1px solid var(--b);color:var(--t2)}
 .mk small{color:var(--t3);margin-left:4px}
